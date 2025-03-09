@@ -3,6 +3,7 @@ on: [push]
 env:
   ProjectName: Chataigne
   PackagesVersion: 1.2.10
+  DepDirUrl: http://benjamin.kuperberg.fr/chataigne/user/data/
 
 jobs:
   windows:
@@ -27,6 +28,7 @@ jobs:
           msbuild-arch: arm64
           buildFolder: "VisualStudio2022_CI"
           installerName: installArm64
+          suffix: arm64
 
       fail-fast: false
 
@@ -68,7 +70,8 @@ jobs:
         shell: powershell
         run: |
           Set-Variable -Name "PKGNAME" -Value "${{ env.ProjectName }}-${{ steps.set_variables.outputs.suffix }}"
-          Invoke-WebRequest "${{ secrets.DEPDIRURL }}${{ env.ProjectName }}-win-x64-${{ steps.set_variables.outputs.dep }}-dependencies.zip" -OutFile ./deps.zip
+
+          Invoke-WebRequest "${{ env.DepDirUrl }}${{ env.ProjectName }}-win-x64-${{ steps.set_variables.outputs.dep }}-dependencies.zip" -OutFile ./deps.zip
           7z e deps.zip -aoa
           &"C:/Program Files (x86)/Inno Setup 6/ISCC.exe" "${{ github.workspace }}/${{ matrix.installerName }}.iss" /O. /F$PKGNAME
           echo "pkg-name=$PKGNAME.exe" | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
