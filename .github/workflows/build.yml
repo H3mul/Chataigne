@@ -55,8 +55,8 @@ jobs:
 
       - name: Add msbuild to PATH
         uses: microsoft/setup-msbuild@v1.0.2
-        with:
-          msbuild-architecture: ${{ steps.set_arch.arch_str }}
+        # with:
+          # msbuild-architecture: ${{ steps.set_arch.arch_str }}
 
       - name: Force 64-bit Linker
         shell: powershell
