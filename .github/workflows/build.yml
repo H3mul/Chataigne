@@ -14,17 +14,17 @@ jobs:
       matrix:
         include:
 
-        # - arch: win-x64
-        #   buildFolder: "VisualStudio2022_CI"
-        #   installerName: install
-
         - arch: win-arm64
           buildFolder: "VisualStudio2022_CI"
           installerName: install
 
-        # - arch: win7-x64
-        #   buildFolder: "VisualStudio2022_Win7CI"
-        #   installerName: installWin7
+        - arch: win-x64
+          buildFolder: "VisualStudio2022_CI"
+          installerName: install
+
+        - arch: win7-x64
+          buildFolder: "VisualStudio2022_Win7CI"
+          installerName: installWin7
 
 
       fail-fast: false
@@ -50,13 +50,13 @@ jobs:
 
       - name: Set arch string
         id: set_arch
-        # eg win-arm64 becomes arm64
+        # eg win-arm64 becomes arm64, win-x64 and win7-x64 become x64
         run: echo "arch_str=${${{ matrix.arch }}#*-}" >> $GITHUB_OUTPUT
 
       - name: Add msbuild to PATH
         uses: microsoft/setup-msbuild@v1.0.2
-        # with:
-          # msbuild-architecture: ${{ steps.set_arch.arch_str }}
+        with:
+          msbuild-architecture: ${{ steps.set_arch.arch_str }}
 
       - name: Force 64-bit Linker
         shell: powershell
