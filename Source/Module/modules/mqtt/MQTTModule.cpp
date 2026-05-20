@@ -13,23 +13,25 @@
 MQTTClientModule::MQTTClientModule(const String& name, bool canHaveInput, bool canHaveOutput) :
 	Module(name),
 	Thread("MQTT"),
-#if JUCE_WINDOWS
+#ifdef MOSQUITTO_SUPPORTED
 	mosquittopp("Chataigne"),
 #endif
 	authenticationCC("Authentication"),
 	topicsManager("Topics")
 {
 
-#if JUCE_WINDOWS
+#ifdef MOSQUITTO_SUPPORTED
 	mosqpp::lib_init();
 	threaded_set(true);
 #else
 	NLOGWARNING(niceName, "MQTT is only supported on windows right now.");
 #endif
 
+
 	protocol = moduleParams.addEnumParameter("Default Protocol", "How to parse the incoming data");
 	protocol->addOption("JSON", MQTTTopic::JSON)->addOption("Raw", MQTTTopic::RAW);
 
+	clientId = moduleParams.addStringParameter("Client ID", "The client ID to use. Needs to be unique", "Chataigne");
 	host = moduleParams.addStringParameter("Host", "The MQTT Broker's host address", "127.0.0.1");
 	port = moduleParams.addIntParameter("Port", "The MQTT Broker's port", 1883, 1, 65535);
 	keepAlive = moduleParams.addIntParameter("Keep Alive", "The time to keep alive the connection, in seconds", 60, 1);
@@ -51,6 +53,9 @@ MQTTClientModule::MQTTClientModule(const String& name, bool canHaveInput, bool c
 	includeValuesInSave = true;
 	valuesCC.saveAndLoadRecursiveData = true;
 
+	//Script
+	scriptObject.getDynamicObject()->setMethod("publish", MQTTClientModule::publishMessageFromScript);
+
 	defManager->add(CommandDefinition::createDef(this, "", "Publish", &MQTTCommand::create));
 
 	setupIOConfiguration(true, true);
@@ -67,7 +72,7 @@ void MQTTClientModule::clearItem()
 {
 	Module::clearItem();
 
-#if JUCE_WINDOWS
+#ifdef MOSQUITTO_SUPPORTED
 	mosqpp::lib_cleanup();
 #endif
 }
@@ -92,7 +97,7 @@ void MQTTClientModule::onControllableFeedbackUpdateInternal(ControllableContaine
 
 	if (!isCurrentlyLoadingData)
 	{
-		if (c == host || c == port || c == keepAlive || c == authenticationCC.enabled || c == username || c == pass /* || c == useTLS*/)
+		if (c == host || c == port || c == keepAlive || c == authenticationCC.enabled || c == username || c == pass || c == clientId)
 		{
 			stopClient();
 			if (enabled->boolValue()) startThread();
@@ -115,14 +120,18 @@ void MQTTClientModule::publishMessage(const String& topic, const String& message
 {
 	if (!enabled->boolValue()) return;
 
-#if JUCE_WINDOWS
+#ifdef MOSQUITTO_SUPPORTED
 	if (!isConnected->boolValue())
 	{
 		NLOGWARNING(niceName, "Not connected, not sending");
 		return;
 	}
 
-	int result = publish(NULL, topic.toStdString().c_str(), message.length(), message.toStdString().c_str(), 2);
+	int result = 0;
+	{
+		GenericScopedLock lock(mosquittoLock);
+		result = publish(NULL, topic.toStdString().c_str(), message.length(), message.toStdString().c_str(), 2);
+	}
 
 	if (logOutgoingData->boolValue())
 	{
@@ -145,8 +154,11 @@ void MQTTClientModule::itemRemoved(MQTTTopic* item)
 {
 	if (isCurrentlyLoadingData) return;
 
-#if JUCE_WINDOWS
-	unsubscribe(&item->mid, item->topic->stringValue().toStdString().c_str());
+#ifdef MOSQUITTO_SUPPORTED
+	{
+		GenericScopedLock mosqLock(mosquittoLock);
+		unsubscribe(&item->mid, item->topic->stringValue().toStdString().c_str());
+	}
 #endif
 	updateTopicSubs();
 }
@@ -155,7 +167,8 @@ void MQTTClientModule::itemsRemoved(Array<MQTTTopic*> items)
 {
 	if (isCurrentlyLoadingData) return;
 
-#if JUCE_WINDOWS
+#ifdef MOSQUITTO_SUPPORTED
+	GenericScopedLock mosqLock(mosquittoLock);
 	for (auto& item : items) unsubscribe(&item->mid, item->topic->stringValue().toStdString().c_str());
 #endif
 	updateTopicSubs();
@@ -207,8 +220,11 @@ void MQTTClientModule::updateTopicSubs()
 		break;
 		}
 
-#if JUCE_WINDOWS
-		subscribe(&topic->mid, s.toStdString().c_str());
+#ifdef MOSQUITTO_SUPPORTED
+		{
+			GenericScopedLock mosqLock(mosquittoLock);
+			subscribe(&topic->mid, s.toStdString().c_str());
+		}
 #endif
 		topicItemMap.set(s, topic);
 	}
@@ -260,23 +276,30 @@ void MQTTClientModule::run()
 {
 	wait(100);
 
-#if JUCE_WINDOWS
-	if (isConnected->boolValue())
+#ifdef MOSQUITTO_SUPPORTED
+	int result = 0;
 	{
+		GenericScopedLock mosqLock(mosquittoLock);
+		if (isConnected->boolValue())
+		{
+			isConnected->setValue(false);
+			disconnect();
+		}
+
+		reinitialise(clientId->stringValue().toStdString().c_str(), true);
+
+		NLOG(niceName, "Connecting to " << host->stringValue() << ":" << port->intValue() << " with id " << clientId->stringValue() << "...");
+
+		if (authenticationCC.enabled->boolValue())
+		{
+			username_pw_set(username->stringValue().toStdString().c_str(), pass->stringValue().toStdString().c_str());
+			//add tls here
+		}
+		else username_pw_set(NULL);
+
 		isConnected->setValue(false);
-		disconnect();
+		result = connect(host->stringValue().toStdString().c_str(), port->intValue(), keepAlive->intValue());
 	}
-
-	NLOG(niceName, "Connecting to " << host->stringValue() << ":" << port->intValue() << "...");
-
-	if (authenticationCC.enabled->boolValue())
-	{
-		username_pw_set(username->stringValue().toStdString().c_str(), pass->stringValue().toStdString().c_str());
-		//add tls here
-	}
-	else username_pw_set(NULL);
-
-	int result = connect(host->stringValue().toStdString().c_str(), port->intValue(), keepAlive->intValue());
 
 	if (result == 0)
 	{
@@ -286,11 +309,13 @@ void MQTTClientModule::run()
 	else
 	{
 		NLOGERROR(niceName, "Connection error (" << result << ")");
+		isConnected->setValue(false);
 		return;
 	}
 
 
-	loop_forever();
+	reconnect_delay_set(1, 10, true);
+	loop_forever(-1, 1000);
 
 
 	while (!threadShouldExit())
@@ -311,47 +336,105 @@ void MQTTClientModule::run()
 		wait(2);
 	}
 
-	loop_stop();
-
-	isConnected->setValue(false);
-	disconnect();
+	{
+		GenericScopedLock mosqLock(mosquittoLock);
+		loop_stop();
+		isConnected->setValue(false);
+		disconnect();
+	}
 #endif
 }
 
 void MQTTClientModule::stopClient()
 {
-#if JUCE_WINDOWS
-	loop_stop();
-	disconnect();
+#ifdef MOSQUITTO_SUPPORTED
+	{
+		GenericScopedLock mosqLock(mosquittoLock);
+		loop_stop();
+		disconnect();
+		isConnected->setValue(false);
+	}
 #endif
 	stopThread(1000);
 }
 
-#if JUCE_WINDOWS
+/**
+ * @brief Publishes a message to an MQTT topic from a script.
+ *
+ * This method retrieves the MQTTClientModule object from the JavaScript arguments,
+ * checks if the module is enabled, validates the number of arguments provided,
+ * extracts the topic and message from the arguments, and then calls the
+ * internal publishMessage method.
+ *
+ * @param args The arguments passed from the JavaScript script. It expects two
+ * arguments:
+ * - The first argument is the topic to publish to (String).
+ * - The second argument is the message to publish (String).
+ * @return var Returns an empty var object upon successful execution or if the
+ * module is disabled. Returns an empty var object after logging an
+ * error if the number of arguments is incorrect.
+ *
+ * @note If more than two arguments are provided, a warning is logged, and the
+ * extra arguments are discarded.
+ */
+var MQTTClientModule::publishMessageFromScript(const var::NativeFunctionArgs& args)
+{
+	MQTTClientModule* m = getObjectFromJS<MQTTClientModule>(args);
+	if (!m->enabled->boolValue()) return var();
+
+	if (args.numArguments < 2)
+	{
+		NLOGERROR(m->niceName, "Error, function takes 2 arguments, got " + String(args.numArguments));
+		return var();
+	}
+
+	if (args.numArguments > 2)
+	{
+		NLOGWARNING(m->niceName, "Warning, function takes 2 arguments, got " + String(args.numArguments) + ". Last arguments will be discarded.");
+	}
+
+	String topic = args.arguments[0].toString();
+	String message = args.arguments[1].toString();
+	m->publishMessage(topic, message);
+
+	return var();
+}
+
+#ifdef MOSQUITTO_SUPPORTED
 void MQTTClientModule::on_connect(int rc)
 {
 	//LOG("MQTT Connected : " << rc);
 	//DBG("MQTT Connected event reveiced " << rc);
 	isConnected->setValue(rc == 0);
 
-	if (rc != 0) return;
+	if (rc != 0) {
+		return;
+	}
 
 	GenericScopedLock lock(updateTopicLock);
 
 	//Subscribe
-	for (auto& t : topicsManager.items)
 	{
-		String topic = t->topic->stringValue();
-		if (topic.isEmpty()) continue;
-		subscribe(&t->mid, topic.toStdString().c_str());
+		GenericScopedLock mosqLock(mosquittoLock);
+		for (auto& t : topicsManager.items)
+		{
+			String topic = t->topic->stringValue();
+			if (topic.isEmpty()) continue;
+			subscribe(&t->mid, topic.toStdString().c_str());
+		}
 	}
 }
 
 void MQTTClientModule::on_disconnect(int rc)
 {
-	if (rc != 14) LOG("MQTT Disconnected : " << rc); //14 is loop disconnection, autoreconnect
 	isConnected->setValue(false);
-	if (rc != 0) reconnect();
+
+	if (rc == 0) {
+		NLOG(niceName, "MQTT disconnected cleanly");
+		return;
+	}
+
+	NLOGWARNING(niceName, "MQTT disconnected (rc=" << rc << ")");
 }
 
 void MQTTClientModule::on_publish(int mid)
@@ -438,6 +521,7 @@ void MQTTClientModule::on_log(int level, const char* str)
 void MQTTClientModule::on_error()
 {
 	NLOGERROR(niceName, "Error !");
+	isConnected->setValue(false);
 }
 #endif
 

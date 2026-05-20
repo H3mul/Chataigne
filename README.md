@@ -1,13 +1,13 @@
 # Chataigne
 Artist-friendly Modular Machine for Art and Technology
-Official website : http://benjamin.kuperberg.fr/chataigne
+Official website : https://benjamin.kuperberg.fr/chataigne
 
 ### Intro
 
 Chataigne is made with one goal in mind : create a common tool for artists, technicians and developers who wish to use technology and synchronize softwares for shows, interactive installations or prototyping.
 It aims to be as simple as possible for basic interactions, but can be easily extended to create complex interactions.
 
-![What a beautiful screenshot !](http://benjamin.kuperberg.fr/chataigne/user/images/screenshot2.png)
+![What a beautiful screenshot !](https://benjamin.kuperberg.fr/chataigne/user/images/screenshot2.png)
 
 
 ### Okay, but what does it do exactly ?
@@ -53,6 +53,8 @@ You can check the tutorials to better understand what and how you can use Chatai
     - Resolume
     - Madmapper
     - Millumin
+    - TouchDesigner
+    - Unity
     - QLab
     - HeavyM
     - D::Light
@@ -88,7 +90,7 @@ You can check the tutorials to better understand what and how you can use Chatai
 
 ## Using the software
 
-Compiled versions for Windows, Mac OSX and Linux are available at : http://benjamin.kuperberg.fr/chataigne/#download
+Compiled versions for Windows, Mac OSX and Linux are available at : https://benjamin.kuperberg.fr/chataigne/#download
 
 If beta versions are available, they will show up on this page.
 
@@ -102,18 +104,18 @@ Also you can watch tutorials from the website and follow the interactive guide f
 
 ## Building the software
 
-Chataigne is built on top of the JUCE frameworks. You can find more infos about it there : http://www.juce.com
+Chataigne is built on top of the JUCE frameworks. You can find more infos about it there : https://www.juce.com
 Chataigne is using a modified version of JUCE. So you first need to compile the Projucer from the modified version of JUCE instead of downloading JUCE :
 
-  - Clone the develop-local branch from the JUCE git here : http://github.com/benkuper/JUCE 
+  - Clone the develop-local branch from the JUCE git here : https://github.com/benkuper/JUCE 
   ```
-  git clone --branch=develop-local http://github.com/benkuper/JUCE
+  git clone --branch=develop-local https://github.com/benkuper/JUCE
   ```
   - In the *JUCE/extras/Projucer/Builds* folder, choose the folder depending on you system, open the solution with your IDE and compile it or make in linux. You can then open the new Projucer app that you just built.
   
   - Clone Chataigne with --recursive options to integrate organicUI and timeline modules
   ```
-  git clone --recursive http://github.com/benkuper/Chataigne
+  git clone --recursive https://github.com/benkuper/Chataigne
   ```
   - Launch the Projucer and open Chataigne.jucer
   - Set your Global Paths (see picture below) 
@@ -122,6 +124,49 @@ Chataigne is using a modified version of JUCE. So you first need to compile the 
   - Build the solution from your IDE and compile it or make in linux
   - Check the dependency section below if you have dependency problems when running Chataigne
   - Enjoy !
+
+### macOS specific tips
+
+**Prerequisites:** Xcode (available from the Mac App Store) is required to build on macOS.
+
+The Xcode project expects JUCE to be at `~/JUCE`. Since JUCE is already bundled in this repository, the easiest setup is a symlink:
+```bash
+ln -s /path/to/Chataigne/JUCE ~/JUCE
+```
+Replace `/path/to/Chataigne` with the actual path where you cloned this repo.
+
+Once the symlink is in place, open `Builds/MacOSX/Chataigne.xcodeproj` in Xcode and build, or use the command line:
+```bash
+# For Apple Silicon (arm64)
+xcodebuild -project Builds/MacOSX/Chataigne.xcodeproj \
+           -scheme "Chataigne - App" \
+           -configuration DebugSilicon \
+           -destination "platform=macOS" \
+           build
+
+# For Intel (x86_64)
+xcodebuild -project Builds/MacOSX/Chataigne.xcodeproj \
+           -scheme "Chataigne - App" \
+           -configuration Debug \
+           -destination "platform=macOS" \
+           build
+```
+
+The built app will be at `Builds/MacOSX/build/<configuration>/Chataigne.app`.
+
+Use `Release` / `ReleaseSilicon` instead of `Debug` / `DebugSilicon` for optimized builds.
+
+**Post-build: bundle required dylibs**
+
+After building, the pre-built mosquitto and OpenSSL dylibs (already present in `External/mosquitto/lib/osx/`) must be copied into the app bundle and re-signed, otherwise the app will crash at launch:
+```bash
+APP=Builds/MacOSX/build/DebugSilicon/Chataigne.app   # adjust config as needed
+FRAMEWORKS="$APP/Contents/Frameworks"
+
+mkdir -p "$FRAMEWORKS"
+cp External/mosquitto/lib/osx/lib{mosquitto,mosquittopp,ssl,crypto}.dylib "$FRAMEWORKS/"
+codesign --force --deep --sign - "$APP"
+```
 
 ### Linux specific tips
 You'll need to build this lib to run the app:
@@ -148,15 +193,15 @@ Alternatively put `export LD_LIBRARY_PATH=/path/to/Servus/build/lib/:$LD_LIBRARY
 
 ### Setting JUCE Global Paths
   
- ![Don't forget to set the paths  !](http://benjamin.kuperberg.fr/chataigne/user/images/juce_paths.png?) 
+ ![Don't forget to set the paths  !](https://benjamin.kuperberg.fr/chataigne/user/images/juce_paths.png?) 
   
 ## Dependencies
 
 ### Windows running instructions ###
 **DLL dependencies** :
-  - For **Release**, you can just copy the dll files from there : http://benjamin.kuperberg.fr/chataigne/user/data/Chataigne-win-x64-release-dependencies.zip and paste them in the same folder as the generated executable (in the Binaries folder)
+  - For **Release**, you can just copy the dll files from there : https://benjamin.kuperberg.fr/chataigne/user/data/Chataigne-win-x64-release-dependencies.zip and paste them in the same folder as the generated executable (in the Binaries folder)
   
-  - For **Debug**, you can get a dependency pack there http://benjamin.kuperberg.fr/chataigne/user/data/Chataigne-win-x64-debug-dependencies.zip and do the same in the Binaries/Debug folder
+  - For **Debug**, you can get a dependency pack there https://benjamin.kuperberg.fr/chataigne/user/data/Chataigne-win-x64-debug-dependencies.zip and do the same in the Binaries/Debug folder
  
 ### Linux running instructions ###
   - Before running Chataigne, you just need to do a chmod a+x on the .AppImage file, or right-click on it and allow execution, then you're ready to play !  
@@ -165,7 +210,7 @@ Alternatively put `export LD_LIBRARY_PATH=/path/to/Servus/build/lib/:$LD_LIBRARY
 ## Troubleshooting
 
 If you have any issue regarding the software, you can post an issue on github (preferred for code-related problems and features),
-there is also the official forum here : http://benjamin.kuperberg.fr/chataigne/forum more suited for questions, wishes and user-level issues.
+there is also the official forum here : https://benjamin.kuperberg.fr/chataigne/forum more suited for questions, wishes and user-level issues.
 
 Chataigne is now on Discord, join and meet the community !
 
@@ -212,7 +257,7 @@ Are you using Chataigne on a regular basis ? Then why not support me accordingly
 
 Choose your angel weapon :
 
-[![Click click click !](http://benjamin.kuperberg.fr/chataigne/user/images/github_sponsors.png)](https://github.com/sponsors/benkuper)
+[![Click click click !](https://benjamin.kuperberg.fr/chataigne/user/images/github_sponsors.png)](https://github.com/sponsors/benkuper)
 
 <a href="https://www.patreon.com/bePatron?u=23293310"><img src="https://c5.patreon.com/external/logo/become_a_patron_button@2x.png" width="140"></a>
 

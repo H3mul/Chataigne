@@ -5,8 +5,7 @@ on:
 
 env:
   ProjectName: Chataigne
-  PackagesVersion: 1.2.10
-  DepDirUrl: http://benjamin.kuperberg.fr/chataigne/user/data/
+  PackagesVersion: 1.2.11
 
 jobs:
   windows:
@@ -149,7 +148,7 @@ jobs:
       - name: Setup XCode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '15.3'
+          xcode-version: '16.4.0'
 
       - name: Build
         uses: sersoft-gmbh/xcodebuild-action@v2.0.1
@@ -161,6 +160,52 @@ jobs:
           arch: ${{ matrix.arch }}
           configuration: ${{ matrix.config }}
           use-xcpretty: true
+
+      - name: Bundle Libraries (Silicon Only)
+        if: ${{ matrix.arch == 'arm64' }}
+        run: |
+          # 1. Define Path (Matches .pkgproj expectation)
+          APP_PATH="Release/${{ env.ProjectName }}.app"
+          
+          # 2. Verification
+          if [ ! -d "$APP_PATH" ]; then
+             echo "::error::App not found at '$APP_PATH'. Please verify your Projucer Post-Build script actually moves the app to this folder."
+             echo "Listing root directory for debugging:"
+             ls -F
+             exit 1
+          fi
+          
+          echo "Found App at $APP_PATH. Proceeding with bundling."
+
+          FRAMEWORKS_DIR="$APP_PATH/Contents/Frameworks"
+          EXECUTABLE="$APP_PATH/Contents/MacOS/${{ env.ProjectName }}"
+          
+          # 3. Create Frameworks directory
+          mkdir -p "$FRAMEWORKS_DIR"
+          
+          # 4. Copy Dylibs
+          cp External/mosquitto/lib/osx/libmosquitto.dylib "$FRAMEWORKS_DIR/"
+          cp External/mosquitto/lib/osx/libmosquittopp.dylib "$FRAMEWORKS_DIR/"
+          cp External/mosquitto/lib/osx/libssl.dylib "$FRAMEWORKS_DIR/"
+          cp External/mosquitto/lib/osx/libcrypto.dylib "$FRAMEWORKS_DIR/"
+          
+          # 5. Fix Library IDs
+          install_name_tool -id @rpath/libmosquitto.dylib "$FRAMEWORKS_DIR/libmosquitto.dylib"
+          install_name_tool -id @rpath/libmosquittopp.dylib "$FRAMEWORKS_DIR/libmosquittopp.dylib"
+          install_name_tool -id @rpath/libssl.dylib "$FRAMEWORKS_DIR/libssl.dylib"
+          install_name_tool -id @rpath/libcrypto.dylib "$FRAMEWORKS_DIR/libcrypto.dylib"
+          
+          # 6. Fix dependency path in libmosquittopp
+          install_name_tool -change /usr/local/lib/libmosquitto.dylib @rpath/libmosquitto.dylib "$FRAMEWORKS_DIR/libmosquittopp.dylib" || true
+          install_name_tool -change libmosquitto.dylib @rpath/libmosquitto.dylib "$FRAMEWORKS_DIR/libmosquittopp.dylib" || true
+          install_name_tool -change libssl.dylib @rpath/libssl.dylib "$FRAMEWORKS_DIR/libmosquittopp.dylib" || true
+          install_name_tool -change libcrypto.dylib @rpath/libcrypto.dylib "$FRAMEWORKS_DIR/libmosquittopp.dylib" || true
+
+          # 7. Add RPATH to Executable
+          install_name_tool -add_rpath @executable_path/../Frameworks "$EXECUTABLE" || true
+          
+          # 8. Re-sign (Mandatory after modifying the bundle)
+          codesign --force --deep --sign - "$APP_PATH"
 
       - name: Create Package
         id: create_package
@@ -177,22 +222,19 @@ jobs:
           pkg-name: ./Package/${{ steps.create_package.outputs.pkg-name }}
           url: ${{ secrets.UPLOADURL }}
           pass: ${{ secrets.UPLOADPASS }}
-          
-  linux:
-    if: false # tmp disable
 
-    name: Linux
+  linux:
+    name: Linux (x64)
     runs-on: ubuntu-22.04
-    container: tommagnier/chataigne-linux-x64-build:debian9
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           submodules: 'recursive'
 
       - name: Checkout JUCE
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           repository: benkuper/JUCE
           ref: develop-local
@@ -202,139 +244,625 @@ jobs:
         id: set_variables
         uses: ./.github/actions/set-suffix
         with:
-          os: 'x64'
+          os: linux-x64
 
       - name: Installing dependencies
-        id: install_deps
-        #shell: bash {0} # Opt out of fail-fast behavior (necessary to ignore fetch errors)
         run: |
-          # Most dependencies are already installed in the Docker image. Uncomment the following lines if you need more
-          # apt-get update && apt-get install ...
-
-          cd $GITHUB_WORKSPACE
-          wget "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
-          chmod a+x appimagetool-x86_64.AppImage
-
-      # - name: Start SSH via ngrok
-      #   uses: P3TERX/ssh2actions@main
-      #   with:
-      #     mode: ngrok
-      #   env:
-      #     # After sign up on the https://ngrok.com
-      #     # You can find this token here: https://dashboard.ngrok.com/auth/your-authtoken
-      #     NGROK_TOKEN: ${{ secrets.NGROK_TOKEN }}
-          
-      #     # ngrok server region [us, eu, au, ap, sa, jp, in] (optional, default: us)
-      #     # You can find this server region here: https://ngrok.com/docs#global-locations
-      #     NGROK_REGION: us
-
-      #     # This password you will use when authorizing via SSH
-      #     SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev libjack-jackd2-dev ladspa-sdk \
+            libfreetype6-dev libx11-dev libxcomposite-dev \
+            libxcursor-dev libxinerama-dev libxext-dev \
+            libxrandr-dev libxrender-dev libwebkit2gtk-4.0-dev \
+            libglu1-mesa-dev mesa-common-dev libcurl4-openssl-dev \
+            libssl-dev libmosquitto-dev libmosquittopp-dev libbluetooth-dev \
+            libusb-1.0-0-dev libhidapi-dev libsdl2-dev
 
       - name: Build
         run: |
-          cd $GITHUB_WORKSPACE/Builds/LinuxMakefile
-          gcc --version
-          make -j2 CONFIG=Release
+          # Clean blobs to force system linking
+          rm -rf External/mosquitto/lib/linux/
+          rm -rf External/sdl/lib/linux/
+
+          cd Builds/LinuxMakefile
+          make -j$(nproc) CONFIG=Release
+
+      - name: ABI Baseline Audit (glibc/OpenSSL)
+        run: |
+          set -euo pipefail
+          BIN=Builds/LinuxMakefile/build/${{ env.ProjectName }}
+
+          if [ ! -f "$BIN" ]; then
+            echo "::error::Binary not found at $BIN"
+            exit 1
+          fi
+
+          MAX_GLIBC=$(objdump -T "$BIN" | grep -o 'GLIBC_[0-9.]\+' | sed 's/GLIBC_//' | sort -V | tail -1)
+          echo "Detected max GLIBC symbol: $MAX_GLIBC"
+
+          if dpkg --compare-versions "$MAX_GLIBC" gt "2.35"; then
+            echo "::error::GLIBC baseline too new ($MAX_GLIBC). Must stay <= 2.35 for Ubuntu 22.04 baseline compatibility."
+            exit 1
+          fi
+
+          NEEDED=$(readelf -d "$BIN" | awk '/NEEDED/ {print $5}' | tr -d '[]')
+          echo "Detected NEEDED libs:"
+          echo "$NEEDED"
+
+          if echo "$NEEDED" | grep -E 'libssl\.so\.1\.1|libcrypto\.so\.1\.1' >/dev/null; then
+            echo "::error::Binary links against OpenSSL 1.1, which is not acceptable for Bookworm/Trixie/Ubuntu 24.04 targets."
+            exit 1
+          fi
+
+      - name: Validate ABI Across Target Distros
+        run: |
+          set -euo pipefail
+          for IMAGE in ubuntu:22.04 ubuntu:24.04 debian:bookworm debian:trixie; do
+            echo "\n=== ABI check in $IMAGE ==="
+            docker run --rm -v "${GITHUB_WORKSPACE}:/ws" "$IMAGE" bash -lc '
+              set -euo pipefail
+              apt-get update >/dev/null
+              apt-get install -y --no-install-recommends binutils >/dev/null
+              BIN=/ws/Builds/LinuxMakefile/build/${{ env.ProjectName }}
+              MAX_GLIBC=$(objdump -T "$BIN" | grep -o "GLIBC_[0-9.]\\+" | sed "s/GLIBC_//" | sort -V | tail -1)
+              echo "Max GLIBC symbol: $MAX_GLIBC"
+              dpkg --compare-versions "$MAX_GLIBC" le "2.35"
+              NEEDED=$(readelf -d "$BIN" | sed -n "s/.*Shared library: \[\(.*\)\]/\1/p")
+              if echo "$NEEDED" | grep -E "libssl\\.so\\.1\\.1|libcrypto\\.so\\.1\\.1" >/dev/null; then
+                echo "OpenSSL 1.1 dependency detected"
+                exit 1
+              fi
+            '
+          done
+
+      - name: Prepare AppImage Tool
+        run: |
+          wget "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+          chmod a+x appimagetool-x86_64.AppImage
+          APPDIR=./Builds/LinuxMakefile/${{ env.ProjectName }}.AppDir
+          mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/lib"
+
+          # Keep template metadata/resources, but reset dynamic libs and stale binary.
+          find "$APPDIR/usr/lib" -mindepth 1 ! -name 'exec_wrapper.so' -delete
+          rm -f "$APPDIR/usr/bin/${{ env.ProjectName }}"
+
+          # Ensure expected AppImage metadata files are present.
+          test -f "$APPDIR/AppRun"
+          test -f "$APPDIR/chataigne.desktop"
+          test -f "$APPDIR/chataigne.png"
 
       - name: Create AppImage
         id: create_package
         run: |
-          mkdir -p ${{ env.ProjectName }}.AppDir/usr/bin/
-          cp build/${{ env.ProjectName }} ${{ env.ProjectName }}.AppDir/usr/bin/
+          set -euo pipefail
+          APPDIR=./Builds/LinuxMakefile/${{ env.ProjectName }}.AppDir
+          BIN=$APPDIR/usr/bin/${{ env.ProjectName }}
 
-          PKGNAME=${{ env.ProjectName }}-linux-${{ steps.set_variables.outputs.suffix }}.AppImage
+          # 1. Copy Executable
+          cp Builds/LinuxMakefile/build/${{ env.ProjectName }} "$BIN"
+
+          # 2. Copy app-specific libs (seed set)
+          LIB_PATH=/usr/lib/x86_64-linux-gnu
+          copy_glob() {
+            if compgen -G "$1" > /dev/null; then
+              cp -d $1 "$APPDIR/usr/lib/"
+            fi
+          }
+
+          copy_glob "$LIB_PATH/libmosquitto.so*"
+          copy_glob "$LIB_PATH/libmosquittopp.so*"
+          copy_glob "$LIB_PATH/libbluetooth.so*"
+          copy_glob "$LIB_PATH/libusb-1.0.so*"
+          copy_glob "$LIB_PATH/libhidapi-hidraw.so*"
+          copy_glob "$LIB_PATH/libSDL2-2.0.so*"
+          copy_glob "External/servus/lib/linux/libServus.so*"
+
+          # Some bundles only ship libServus.so while the binary expects libServus.so.6.
+          if compgen -G "$APPDIR/usr/lib/libServus.so" > /dev/null && ! compgen -G "$APPDIR/usr/lib/libServus.so.6" > /dev/null; then
+            ln -sf libServus.so "$APPDIR/usr/lib/libServus.so.6"
+          fi
+
+          # 3. Auto-bundle runtime deps from direct NEEDED entries, excluding forbidden core libs.
+          SEARCH_DIRS=("$LIB_PATH" "/lib/x86_64-linux-gnu" "/usr/lib/x86_64-linux-gnu")
+
+          is_forbidden_lib() {
+            case "$1" in
+              libc.so*|libm.so*|libpthread.so*|librt.so*|libdl.so*|libgcc_s.so*|libstdc++.so*|libssl.so*|libcrypto.so*|libcurl.so*|libpulse.so*|libpulsecommon*.so*|ld-linux*.so*|libresolv.so*|libnss_*.so*|libanl.so*|libutil.so*)
+                return 0
+                ;;
+              *)
+                return 1
+                ;;
+            esac
+          }
+
+          find_matching_so_path() {
+            local SONAME="$1"
+            local DIR
+            for DIR in "${SEARCH_DIRS[@]}"; do
+              if [ -e "$DIR/$SONAME" ]; then
+                echo "$DIR/$SONAME"
+                return 0
+              fi
+            done
+
+            for DIR in "${SEARCH_DIRS[@]}"; do
+              local CANDIDATE
+              CANDIDATE=$(find "$DIR" -maxdepth 1 -name "$SONAME*" 2>/dev/null | head -n 1 || true)
+              if [ -n "$CANDIDATE" ]; then
+                echo "$CANDIDATE"
+                return 0
+              fi
+            done
+
+            return 1
+          }
+
+          copy_needed_from_target() {
+            local TARGET="$1"
+            readelf -d "$TARGET" | awk '/NEEDED/ {print $5}' | tr -d '[]' | while read -r SONAME; do
+              [ -n "$SONAME" ] || continue
+
+              if is_forbidden_lib "$SONAME"; then
+                continue
+              fi
+
+              if compgen -G "$APPDIR/usr/lib/$SONAME*" > /dev/null; then
+                continue
+              fi
+
+              local RESOLVED
+              RESOLVED=$(find_matching_so_path "$SONAME" || true)
+              if [ -n "$RESOLVED" ]; then
+                copy_glob "$(dirname "$RESOLVED")/$SONAME*"
+              else
+                echo "::warning::Could not resolve dependency $SONAME from $TARGET"
+              fi
+            done
+          }
+
+          # Multiple passes resolve transitive dependencies of bundled libraries only.
+          for _ in 1 2 3; do
+            copy_needed_from_target "$BIN"
+            while read -r LIBFILE; do
+              copy_needed_from_target "$LIBFILE"
+            done < <(find "$APPDIR/usr/lib" -maxdepth 1 \( -type f -o -type l \))
+          done
+
+          # Never bundle glibc/libstdc++/OpenSSL/libcurl/libpulse
+          for FORBIDDEN in libc.so libm.so libpthread.so librt.so libdl.so libgcc_s.so libstdc++.so libssl.so libcrypto.so libcurl.so libpulse.so libpulsecommon; do
+            if compgen -G "$APPDIR/usr/lib/${FORBIDDEN}*" > /dev/null; then
+              echo "::error::Forbidden bundled runtime detected: ${FORBIDDEN}"
+              exit 1
+            fi
+          done
+
+          # 4. Generate AppImage
+          PKGNAME=${{ env.ProjectName }}-${{ steps.set_variables.outputs.suffix }}.AppImage
           echo "pkg-name=$PKGNAME" >> $GITHUB_OUTPUT
-          ARCH=x86_64 $GITHUB_WORKSPACE/appimagetool-x86_64.AppImage --appimage-extract-and-run ${{ env.ProjectName }}.AppDir $PKGNAME
-        working-directory: ./Builds/LinuxMakefile
+
+          ./appimagetool-x86_64.AppImage --no-appstream $APPDIR $PKGNAME
+        working-directory: ${{ github.workspace }}
+
+      - name: Smoke Test Linux AppImage
+        run: |
+          set -euo pipefail
+          PKG=${{ steps.create_package.outputs.pkg-name }}
+
+          for IMAGE in ubuntu:22.04 ubuntu:24.04 debian:bookworm debian:trixie; do
+            echo "\n=== AppImage smoke test in $IMAGE ==="
+            docker run --rm -v "${GITHUB_WORKSPACE}:/ws" "$IMAGE" bash -lc '
+              set -euo pipefail
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update >/dev/null
+              apt-get install -y --no-install-recommends xvfb xauth file >/dev/null
+
+              # AppImage payload intentionally relies on host-provided libcurl/libpulse.
+              install_any_pkg() {
+                for PKG in "$@"; do
+                  if apt-cache show "$PKG" >/dev/null 2>&1; then
+                    apt-get install -y --no-install-recommends "$PKG" >/dev/null
+                    return 0
+                  fi
+                done
+                echo "::error::None of the package alternatives are available: $*"
+                exit 1
+              }
+              install_any_pkg libcurl4 libcurl4t64
+              install_any_pkg libpulse0 libpulse0t64
+              install_any_pkg libgcrypt20 libgcrypt20t64
+              cd /ws
+              chmod +x '"$PKG"'
+              rm -rf squashfs-root
+              ./'"$PKG"' --appimage-extract >/dev/null
+
+              APPDIR=/ws/squashfs-root
+              APP="$APPDIR/usr/bin/${{ env.ProjectName }}"
+              export LD_LIBRARY_PATH="$APPDIR/usr/lib"
+
+              # Dependency check for launch-critical binary with AppDir runtime path
+              if ldd "$APP" | grep -q "not found"; then
+                echo "Missing runtime deps detected in AppImage binary"
+                ldd "$APP"
+                exit 1
+              fi
+
+              # Startup smoke test (timeout means app started and stayed alive)
+              set +e
+              timeout 20s xvfb-run -a "$APP" --help >/tmp/chataigne-smoke.log 2>&1
+              RC=$?
+              set -e
+              if [ "$RC" -ne 0 ] && [ "$RC" -ne 124 ]; then
+                echo "App startup failed (rc=$RC)"
+                cat /tmp/chataigne-smoke.log
+                exit 1
+              fi
+            '
+          done
 
       - name: Upload
         uses: ./.github/actions/upload
         with:
-          pkg-name: ./Builds/LinuxMakefile/${{ steps.create_package.outputs.pkg-name }}
+          pkg-name: ${{ steps.create_package.outputs.pkg-name }}
           url: ${{ secrets.UPLOADURL }}
           pass: ${{ secrets.UPLOADPASS }}
-  
-  raspberrypi:
-    if: false # tmp disable
 
-    name: Raspberry Pi
+  raspberrypi:
+    name: Raspberry Pi (Cross-Compile)
     runs-on: ubuntu-22.04
     strategy:
+      fail-fast: false
       matrix:
         include:
-        - arch: armhf
-          cpu: arm1176 #suitable for all Pi versions
-          base_image: raspios_lite:2021-05-07 
-          cpu_info: raspberrypi_zero_w
-          buildFolder: "Raspberry"
-          buildConfig: "Release"
-          
-        - arch: aarch64
-          cpu: cortex-a53
-          base_image: raspios_lite_arm64:2022-04-04
-          cpu_info: raspberrypi_zero2_w_arm64_w
-          buildFolder: "Raspberry64"
-          buildConfig: "Release"
+          - name: "RPi 64-bit"
+            arch_name: aarch64
+            deb_arch: arm64
+            gnu_type: aarch64-linux-gnu
+            buildFolder: "Raspberry64"
+            buildConfig: "Release"
+            arch_flags: "-march=armv8-a"
 
-      fail-fast: false
+          - name: "RPi 32-bit"
+            arch_name: armhf
+            deb_arch: armhf
+            gnu_type: arm-linux-gnueabihf
+            buildFolder: "Raspberry"
+            buildConfig: "Release"
+            arch_flags: "-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard"
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           submodules: 'recursive'
 
       - name: Checkout JUCE
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           repository: benkuper/JUCE
           ref: develop-local
           path: JUCE
 
+      - name: Setup Multi-Arch Apt
+        run: |
+          sudo dpkg --add-architecture ${{ matrix.deb_arch }}
+          sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak
+
+          echo "deb [arch=amd64] http://archive.ubuntu.com/ubuntu jammy main universe restricted multiverse" | sudo tee /etc/apt/sources.list
+          echo "deb [arch=amd64] http://archive.ubuntu.com/ubuntu jammy-updates main universe restricted multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb [arch=amd64] http://archive.ubuntu.com/ubuntu jammy-security main universe restricted multiverse" | sudo tee -a /etc/apt/sources.list
+
+          echo "deb [arch=${{ matrix.deb_arch }}] http://ports.ubuntu.com/ubuntu-ports jammy main universe restricted multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb [arch=${{ matrix.deb_arch }}] http://ports.ubuntu.com/ubuntu-ports jammy-updates main universe restricted multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb [arch=${{ matrix.deb_arch }}] http://ports.ubuntu.com/ubuntu-ports jammy-security main universe restricted multiverse" | sudo tee -a /etc/apt/sources.list
+
+          sudo apt-get update
+
+      - name: Install Cross-Compiler and Libraries
+        run: |
+          sudo apt-get install -y crossbuild-essential-${{ matrix.deb_arch }}
+
+          sudo apt-get install -y \
+            libasound2-dev:${{ matrix.deb_arch }} \
+            libjack-jackd2-dev:${{ matrix.deb_arch }} \
+            ladspa-sdk:${{ matrix.deb_arch }} \
+            libfreetype6-dev:${{ matrix.deb_arch }} \
+            libx11-dev:${{ matrix.deb_arch }} \
+            libxcomposite-dev:${{ matrix.deb_arch }} \
+            libxcursor-dev:${{ matrix.deb_arch }} \
+            libxinerama-dev:${{ matrix.deb_arch }} \
+            libxext-dev:${{ matrix.deb_arch }} \
+            libxrandr-dev:${{ matrix.deb_arch }} \
+            libxrender-dev:${{ matrix.deb_arch }} \
+            libwebkit2gtk-4.0-dev:${{ matrix.deb_arch }} \
+            libglu1-mesa-dev:${{ matrix.deb_arch }} \
+            mesa-common-dev:${{ matrix.deb_arch }} \
+            libcurl4-openssl-dev:${{ matrix.deb_arch }} \
+            libssl-dev:${{ matrix.deb_arch }} \
+            libmosquitto-dev:${{ matrix.deb_arch }} \
+            libmosquittopp-dev:${{ matrix.deb_arch }} \
+            libbluetooth-dev:${{ matrix.deb_arch }} \
+            libusb-1.0-0-dev:${{ matrix.deb_arch }} \
+            libhidapi-dev:${{ matrix.deb_arch }} \
+            libsdl2-dev:${{ matrix.deb_arch }}
+
       - name: Set Suffix
         id: set_variables
         uses: ./.github/actions/set-suffix
         with:
-          os: ${{ matrix.arch }}
+          os: ${{ matrix.arch_name }}
 
-      - name: Download and prepare AppImage
+      - name: Build
+        run: |
+          # Clean incompatible blobs
+          rm -rf External/mosquitto/lib/linux/
+          rm -rf External/mosquitto/lib/rpi/
+          rm -rf External/sdl/lib/raspberry64/
+          rm -rf External/sdl/lib/raspberry/
+          rm -rf Modules/juce_simpleweb/libs/Linux/x86_64/
+
+          cd Builds/${{ matrix.buildFolder }}
+          export PKG_CONFIG_PATH=/usr/lib/${{ matrix.gnu_type }}/pkgconfig
+
+          make -j$(nproc) \
+            CONFIG=${{ matrix.buildConfig }} \
+            CC=${{ matrix.gnu_type }}-gcc \
+            CXX=${{ matrix.gnu_type }}-g++ \
+            AR=${{ matrix.gnu_type }}-ar \
+            STRIP=${{ matrix.gnu_type }}-strip \
+            TARGET_ARCH="${{ matrix.arch_flags }}"
+
+      - name: ABI Baseline Audit (RPi ${{ matrix.arch_name }})
+        run: |
+          set -euo pipefail
+          BIN=Builds/${{ matrix.buildFolder }}/build/${{ env.ProjectName }}
+
+          if [ ! -f "$BIN" ]; then
+            echo "::error::Binary not found at $BIN"
+            exit 1
+          fi
+
+          MAX_GLIBC=$(${{ matrix.gnu_type }}-objdump -T "$BIN" | grep -o 'GLIBC_[0-9.]\+' | sed 's/GLIBC_//' | sort -V | tail -1)
+          echo "Detected max GLIBC symbol: $MAX_GLIBC"
+
+          if dpkg --compare-versions "$MAX_GLIBC" gt "2.35"; then
+            echo "::error::RPi GLIBC baseline too new ($MAX_GLIBC). Must stay <= 2.35."
+            exit 1
+          fi
+
+          NEEDED=$(${{ matrix.gnu_type }}-readelf -d "$BIN" | awk '/NEEDED/ {print $5}' | tr -d '[]')
+          echo "Detected NEEDED libs:"
+          echo "$NEEDED"
+
+          if echo "$NEEDED" | grep -E 'libssl\.so\.1\.1|libcrypto\.so\.1\.1' >/dev/null; then
+            echo "::error::RPi binary links against OpenSSL 1.1, which is not acceptable for Bookworm/Trixie generation systems."
+            exit 1
+          fi
+
+      - name: Prepare AppImage Tool
         run: |
           wget "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
           chmod a+x appimagetool-x86_64.AppImage
+          APPDIR=./Builds/${{ matrix.buildFolder }}/${{ env.ProjectName }}.AppDir
+          mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/lib"
 
-          mkdir -p ./Builds/${{ matrix.buildFolder }}/${{ env.ProjectName }}.AppDir/usr/bin/
-        working-directory: ${{ github.workspace }}
+          # Keep template metadata/resources, but reset dynamic libs and stale binary.
+          find "$APPDIR/usr/lib" -mindepth 1 -delete
+          rm -f "$APPDIR/usr/bin/${{ env.ProjectName }}"
 
-      - name: Install dependencies and build
-        id: build
-        uses: pguyot/arm-runner-action@v2
-        with:
-          image_additional_mb: 2048
-          base_image: ${{ matrix.base_image }}
-          cpu: ${{ matrix.cpu }}
-          copy_artifact_path: Builds/${{ matrix.buildFolder }}/build/${{ env.ProjectName }}
-          copy_artifact_dest: Builds/${{ matrix.buildFolder }}/${{ env.ProjectName }}.AppDir/usr/bin/
-          commands: |
-            apt-get update
-            echo "Installing JUCE lib dependencies and extra tools"
-            apt-get install -qyf libcurl3-gnutls libfreetype6-dev libx11-dev libxinerama-dev libxrandr-dev libxcursor-dev libxcomposite-dev mesa-common-dev libasound2-dev freeglut3-dev libcurl4-gnutls-dev libasound2-dev libjack-dev libbluetooth-dev libgtk-3-dev libwebkit2gtk-4.0-dev libsdl2-dev libusb-1.0-0-dev libhidapi-dev ladspa-sdk libssl-dev
-            apt-get install -qy curl
-
-            cd Builds/${{ matrix.buildFolder }}
-            make -j2 CONFIG=${{ matrix.buildConfig }}
+          # Ensure expected AppImage metadata files are present.
+          test -f "$APPDIR/AppRun"
+          test -f "$APPDIR/chataigne.desktop"
+          test -f "$APPDIR/chataigne.png"
 
       - name: Create AppImage
         id: create_package
         run: |
+          set -euo pipefail
+          APPDIR=./Builds/${{ matrix.buildFolder }}/${{ env.ProjectName }}.AppDir
+          BIN=$APPDIR/usr/bin/${{ env.ProjectName }}
+
+          # 1. Copy Executable
+          cp Builds/${{ matrix.buildFolder }}/build/${{ env.ProjectName }} "$BIN"
+
+          # 2. Copy app-specific libs only
+          LIB_PATH=/usr/lib/${{ matrix.gnu_type }}
+
+          copy_glob() {
+            if compgen -G "$1" > /dev/null; then
+              cp -d $1 "$APPDIR/usr/lib/"
+            fi
+          }
+
+          copy_glob "$LIB_PATH/libmosquitto.so*"
+          copy_glob "$LIB_PATH/libmosquittopp.so*"
+          copy_glob "$LIB_PATH/libbluetooth.so*"
+          copy_glob "$LIB_PATH/libusb-1.0.so*"
+          copy_glob "$LIB_PATH/libhidapi-hidraw.so*"
+          copy_glob "$LIB_PATH/libSDL2-2.0.so*"
+
+          if [ "${{ matrix.arch_name }}" = "aarch64" ]; then
+            copy_glob "External/servus/lib/raspberry64/libServus.so*"
+          else
+            copy_glob "External/servus/lib/raspberry/libServus.so*"
+          fi
+
+          # Some bundles only ship libServus.so while the binary expects libServus.so.6.
+          if compgen -G "$APPDIR/usr/lib/libServus.so" > /dev/null && ! compgen -G "$APPDIR/usr/lib/libServus.so.6" > /dev/null; then
+            ln -sf libServus.so "$APPDIR/usr/lib/libServus.so.6"
+          fi
+
+          # 3. Auto-bundle direct+transitive runtime deps using cross-readelf (works for foreign arch binaries).
+          SEARCH_DIRS=("$LIB_PATH" "/lib/${{ matrix.gnu_type }}" "/usr/lib/${{ matrix.gnu_type }}")
+
+          is_forbidden_lib() {
+            case "$1" in
+              libc.so*|libm.so*|libpthread.so*|librt.so*|libdl.so*|libgcc_s.so*|libstdc++.so*|libssl.so*|libcrypto.so*|libcurl.so*|libpulse.so*|libpulsecommon*.so*|ld-linux*.so*|libresolv.so*|libnss_*.so*|libanl.so*|libutil.so*)
+                return 0
+                ;;
+              *)
+                return 1
+                ;;
+            esac
+          }
+
+          find_matching_so_path() {
+            local SONAME="$1"
+            local DIR
+            for DIR in "${SEARCH_DIRS[@]}"; do
+              if [ -e "$DIR/$SONAME" ]; then
+                echo "$DIR/$SONAME"
+                return 0
+              fi
+            done
+
+            for DIR in "${SEARCH_DIRS[@]}"; do
+              local CANDIDATE
+              CANDIDATE=$(find "$DIR" -maxdepth 1 -name "$SONAME*" 2>/dev/null | head -n 1 || true)
+              if [ -n "$CANDIDATE" ]; then
+                echo "$CANDIDATE"
+                return 0
+              fi
+            done
+
+            return 1
+          }
+
+          copy_needed_from_target() {
+            local TARGET="$1"
+            ${{ matrix.gnu_type }}-readelf -d "$TARGET" | awk '/NEEDED/ {print $5}' | tr -d '[]' | while read -r SONAME; do
+              [ -n "$SONAME" ] || continue
+
+              if is_forbidden_lib "$SONAME"; then
+                continue
+              fi
+
+              if compgen -G "$APPDIR/usr/lib/$SONAME*" > /dev/null; then
+                continue
+              fi
+
+              local RESOLVED
+              RESOLVED=$(find_matching_so_path "$SONAME" || true)
+              if [ -n "$RESOLVED" ]; then
+                copy_glob "$(dirname "$RESOLVED")/$SONAME*"
+              else
+                echo "::warning::Could not resolve dependency $SONAME from $TARGET"
+              fi
+            done
+          }
+
+          # Multiple passes to resolve transitive dependencies.
+          for _ in 1 2 3; do
+            copy_needed_from_target "$BIN"
+            find "$APPDIR/usr/lib" \( -type f -o -type l \) | while read -r LIBFILE; do
+              copy_needed_from_target "$LIBFILE"
+            done
+          done
+
+          # 4. Verify dependency closure for bundled payload (excluding intentionally forbidden system libs).
+          verify_target_needed() {
+            local TARGET="$1"
+            local MISSING=0
+            while read -r SONAME; do
+              [ -n "$SONAME" ] || continue
+              if is_forbidden_lib "$SONAME"; then
+                continue
+              fi
+
+              if compgen -G "$APPDIR/usr/lib/$SONAME*" > /dev/null; then
+                continue
+              fi
+
+              if ! find_matching_so_path "$SONAME" >/dev/null; then
+                echo "::error::Unresolved dependency for $(basename "$TARGET"): $SONAME"
+                MISSING=1
+              fi
+            done < <(${{ matrix.gnu_type }}-readelf -d "$TARGET" | awk '/NEEDED/ {print $5}' | tr -d '[]')
+
+            return $MISSING
+          }
+
+          verify_target_needed "$BIN"
+          while read -r LIBFILE; do
+            verify_target_needed "$LIBFILE"
+          done < <(find "$APPDIR/usr/lib" \( -type f -o -type l \))
+
+          # Never bundle glibc/libstdc++/OpenSSL/libcurl/libpulse
+          for FORBIDDEN in libc.so libm.so libpthread.so librt.so libdl.so libgcc_s.so libstdc++.so libssl.so libcrypto.so libcurl.so libpulse.so libpulsecommon; do
+            if compgen -G "$APPDIR/usr/lib/${FORBIDDEN}*" > /dev/null; then
+              echo "::error::Forbidden bundled runtime detected: ${FORBIDDEN}"
+              exit 1
+            fi
+          done
+
+          # 5. Generate AppImage
           PKGNAME=${{ env.ProjectName }}-linux-${{ steps.set_variables.outputs.suffix }}.AppImage
           echo "pkg-name=$PKGNAME" >> $GITHUB_OUTPUT
-          ARCH=${{ matrix.arch }} ${{ github.workspace }}/appimagetool-x86_64.AppImage --appimage-extract-and-run ${{ env.ProjectName }}.AppDir $PKGNAME
-        working-directory: ./Builds/${{ matrix.buildFolder }}
+          export ARCH=${{ matrix.arch_name }}
+
+          ./appimagetool-x86_64.AppImage --no-appstream $APPDIR $PKGNAME
+        working-directory: ${{ github.workspace }}
+
+      - name: Smoke Test Raspberry Payload
+        run: |
+          set -euo pipefail
+          APPDIR=./Builds/${{ matrix.buildFolder }}/${{ env.ProjectName }}.AppDir
+          BIN=$APPDIR/usr/bin/${{ env.ProjectName }}
+          SEARCH_DIRS=("$APPDIR/usr/lib" "/lib/${{ matrix.gnu_type }}" "/usr/lib/${{ matrix.gnu_type }}")
+
+          if [ ! -f "$BIN" ]; then
+            echo "::error::Payload binary missing: $BIN"
+            exit 1
+          fi
+
+          is_forbidden_lib() {
+            case "$1" in
+              libc.so*|libm.so*|libpthread.so*|librt.so*|libdl.so*|libgcc_s.so*|libstdc++.so*|libssl.so*|libcrypto.so*|libcurl.so*|libpulse.so*|libpulsecommon*.so*|ld-linux*.so*|libresolv.so*|libnss_*.so*|libanl.so*|libutil.so*)
+                return 0
+                ;;
+              *)
+                return 1
+                ;;
+            esac
+          }
+
+          has_dep() {
+            local SONAME="$1"
+            local DIR
+            for DIR in "${SEARCH_DIRS[@]}"; do
+              if compgen -G "$DIR/$SONAME*" > /dev/null; then
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          verify_target_needed() {
+            local TARGET="$1"
+            local MISSING=0
+            while read -r SONAME; do
+              [ -n "$SONAME" ] || continue
+              if is_forbidden_lib "$SONAME"; then
+                continue
+              fi
+              if ! has_dep "$SONAME"; then
+                echo "::error::Smoke test unresolved dependency for $(basename "$TARGET"): $SONAME"
+                MISSING=1
+              fi
+            done < <(${{ matrix.gnu_type }}-readelf -d "$TARGET" | awk '/NEEDED/ {print $5}' | tr -d '[]')
+            return $MISSING
+          }
+
+          verify_target_needed "$BIN"
+          while read -r LIBFILE; do
+            verify_target_needed "$LIBFILE"
+          done < <(find "$APPDIR/usr/lib" \( -type f -o -type l \))
+
+          echo "Raspberry payload smoke test passed for ${{ matrix.arch_name }}"
 
       - name: Upload
         uses: ./.github/actions/upload
         with:
-          pkg-name: ./Builds/${{ matrix.buildFolder }}/${{ steps.create_package.outputs.pkg-name }}
+          pkg-name: ${{ steps.create_package.outputs.pkg-name }}
           url: ${{ secrets.UPLOADURL }}
           pass: ${{ secrets.UPLOADPASS }}

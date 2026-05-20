@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<JUCERPROJECT id="QZW0Vv" name="Chataigne" projectType="guiapp" version="1.9.25b10"
+<JUCERPROJECT id="QZW0Vv" name="Chataigne" projectType="guiapp" version="1.10.3"
               bundleIdentifier="benkuper.Chataigne" companyName="Ben Kuper"
               companyWebsite="http://benjamin.kuperberg.fr/chataigne" companyEmail="benjamin@kuperberg.fr"
               defines="VST_LOGGING=0" splashScreenColour="Dark" cppLanguageStandard="17"
               companyCopyright="Ben Kuper" headerPath="../../Source&#10;../../External/wiiuse&#10;../../External/asio&#10;../../External/asiodriver&#10;../../External/kinect/include&#10;../../External/joycon/include&#10;../../External/servus/include&#10;../../External/dnssd/include&#10;../../External/ois/include&#10;../../External/sdl/include&#10;../../External/hidapi/include&#10;../../External/abletonlink/include&#10;../../External/libusb/include/libusb-1.0&#10;../../External/mosquitto/include&#10;../../External/posistagenet/include&#10;../../External/simpleble/include"
-              projectLineFeed="&#10;" jucerFormatVersion="1">
+              projectLineFeed="&#10;" jucerFormatVersion="1" displaySplashScreen="1">
   <MAINGROUP id="EDDVhd" name="Chataigne">
     <GROUP id="{E61F6705-4C4B-3F04-F742-20CC91F590E4}" name="Resources">
       <FILE id="J10iXd" name="process.png" compile="0" resource="1" file="Resources/process.png"/>
@@ -119,6 +119,10 @@
       <FILE id="xbqvN3" name="tray_icon.png" compile="0" resource="1" file="Resources/tray_icon.png"/>
     </GROUP>
     <GROUP id="{31908E9E-F626-E2D6-1A6D-E188C9D72C25}" name="Source">
+      <FILE id="ah4ZzR" name="PrecompiledHeaders.cpp" compile="1" resource="0"
+            file="Source/PrecompiledHeaders.cpp"/>
+      <FILE id="ELGbdJ" name="PrecompiledHeaders.h" compile="0" resource="0"
+            file="Source/PrecompiledHeaders.h"/>
       <GROUP id="{F784235F-A65F-E1E7-A5F1-8414A8D681B3}" name="Guider">
         <GROUP id="{48A8CB31-FB6F-D3BB-9B53-BCE38E8AF3B4}" name="guides">
           <FILE id="zczlRA" name="BasicsGuide.cpp" compile="0" resource="0" file="Source/Guider/guides/BasicsGuide.cpp"/>
@@ -1018,25 +1022,39 @@
               <GROUP id="{EB8DE141-947F-6061-BC9C-3DFD7641DEAA}" name="lib">
                 <GROUP id="{6B522148-E63B-E5F9-7369-556C4A6537CD}" name="wiiuse">
                   <GROUP id="{E9550E04-7BD2-2AE4-2E54-601BBD8E21E4}" name="os_mac">
-                    <FILE id="j4Yotu" name="os_mac.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/os_mac/os_mac.c"/>
+                    <FILE id="j4Yotu" name="os_mac.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/os_mac/os_mac.c"
+                          skipPCH="1"/>
                     <FILE id="tZWjTk" name="os_mac.m" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/os_mac/os_mac.m"/>
                     <FILE id="c71lMt" name="os_mac_find.m" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/os_mac/os_mac_find.m"/>
                     <FILE id="W8zdF3" name="os_mac_interface.m" compile="1" resource="0"
                           file="Source/Module/modules/controller/wiimote/lib/wiiuse/os_mac/os_mac_interface.m"/>
                   </GROUP>
-                  <FILE id="x4CFfR" name="classic.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/classic.c"/>
-                  <FILE id="HbnRJY" name="dynamics.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/dynamics.c"/>
-                  <FILE id="Qhc04H" name="events.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/events.c"/>
-                  <FILE id="IdcLOI" name="guitar_hero_3.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/guitar_hero_3.c"/>
-                  <FILE id="b2e9Xl" name="io.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/io.c"/>
-                  <FILE id="XG9Wxb" name="ir.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/ir.c"/>
-                  <FILE id="r7IZwJ" name="motion_plus.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/motion_plus.c"/>
-                  <FILE id="lCKnUT" name="nunchuk.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/nunchuk.c"/>
-                  <FILE id="dIhYWM" name="os_nix.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/os_nix.c"/>
-                  <FILE id="uujEEn" name="os_win.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/os_win.c"/>
-                  <FILE id="df0Z9O" name="util.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/util.c"/>
-                  <FILE id="xyFPbL" name="wiiboard.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/wiiboard.c"/>
-                  <FILE id="HD6A7F" name="wiiuse.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/wiiuse.c"/>
+                  <FILE id="x4CFfR" name="classic.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/classic.c"
+                        skipPCH="1"/>
+                  <FILE id="HbnRJY" name="dynamics.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/dynamics.c"
+                        skipPCH="1"/>
+                  <FILE id="Qhc04H" name="events.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/events.c"
+                        skipPCH="1"/>
+                  <FILE id="IdcLOI" name="guitar_hero_3.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/guitar_hero_3.c"
+                        skipPCH="1"/>
+                  <FILE id="b2e9Xl" name="io.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/io.c"
+                        skipPCH="1"/>
+                  <FILE id="XG9Wxb" name="ir.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/ir.c"
+                        skipPCH="1"/>
+                  <FILE id="r7IZwJ" name="motion_plus.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/motion_plus.c"
+                        skipPCH="1"/>
+                  <FILE id="lCKnUT" name="nunchuk.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/nunchuk.c"
+                        skipPCH="1"/>
+                  <FILE id="dIhYWM" name="os_nix.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/os_nix.c"
+                        skipPCH="1"/>
+                  <FILE id="uujEEn" name="os_win.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/os_win.c"
+                        skipPCH="1"/>
+                  <FILE id="df0Z9O" name="util.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/util.c"
+                        skipPCH="1"/>
+                  <FILE id="xyFPbL" name="wiiboard.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/wiiboard.c"
+                        skipPCH="1"/>
+                  <FILE id="HD6A7F" name="wiiuse.c" compile="1" resource="0" file="Source/Module/modules/controller/wiimote/lib/wiiuse/wiiuse.c"
+                        skipPCH="1"/>
                 </GROUP>
               </GROUP>
               <FILE id="dICXsz" name="WiimoteManager.cpp" compile="0" resource="0"
@@ -1385,9 +1403,11 @@
               <FILE id="LoBh0H" name="GPIOCommands.h" compile="0" resource="0" file="Source/Module/modules/gpio/commands/GPIOCommands.h"/>
             </GROUP>
             <GROUP id="{7B5E3E04-8EDE-0C67-646E-0C0431F577F3}" name="pigpio">
-              <FILE id="bsQNw1" name="command.c" compile="1" resource="0" file="Source/Module/modules/gpio/pigpio/command.c"/>
+              <FILE id="bsQNw1" name="command.c" compile="1" resource="0" file="Source/Module/modules/gpio/pigpio/command.c"
+                    skipPCH="1"/>
               <FILE id="o02GiJ" name="command.h" compile="0" resource="0" file="Source/Module/modules/gpio/pigpio/command.h"/>
-              <FILE id="LsucgL" name="pigpio.c" compile="1" resource="0" file="Source/Module/modules/gpio/pigpio/pigpio.c"/>
+              <FILE id="LsucgL" name="pigpio.c" compile="1" resource="0" file="Source/Module/modules/gpio/pigpio/pigpio.c"
+                    skipPCH="1"/>
               <FILE id="cJkWSq" name="pigpio.h" compile="0" resource="0" file="Source/Module/modules/gpio/pigpio/pigpio.h"/>
             </GROUP>
             <FILE id="r5gPbq" name="GPIOModule.cpp" compile="0" resource="0" file="Source/Module/modules/gpio/GPIOModule.cpp"/>
@@ -1701,9 +1721,10 @@
             smallIcon="nVz6Li" bigIcon="nVz6Li" extraCompilerFlags="/bigobj">
       <CONFIGURATIONS>
         <CONFIGURATION isDebug="1" name="Debug" libraryPath="../../External/kinect/lib&#10;../../External/joycon/lib/win&#10;../../External/servus/lib/win/x64/debug&#10;../../External/dnssd/lib&#10;../../External/sdl/lib/win&#10;../../External/hidapi/lib/win/x64&#10;../../External/mosquitto/lib/win&#10;../../External/simpleble/lib/win/debug"
-                       binaryPath="Binaries/Debug"/>
+                       binaryPath="Binaries/Debug" usePrecompiledHeaderFile="1" precompiledHeaderFile="Source\PrecompiledHeaders.h"/>
         <CONFIGURATION isDebug="0" name="Release" binaryPath="Binaries" libraryPath="../../External/kinect/lib&#10;../../External/joycon/lib/win&#10;../../External/servus/lib/win/x64/release&#10;../../External/dnssd/lib&#10;../../External/sdl/lib/win&#10;../../External/hidapi/lib/win/x64&#10;../../External/mosquitto/lib/win&#10;../../External/simpleble/lib/win/release"
-                       alwaysGenerateDebugSymbols="1" debugInformationFormat="ProgramDatabase"/>
+                       alwaysGenerateDebugSymbols="1" debugInformationFormat="ProgramDatabase"
+                       usePrecompiledHeaderFile="1" precompiledHeaderFile="Source\PrecompiledHeaders.h"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
         <MODULEPATH id="juce_audio_basics"/>
@@ -1732,22 +1753,22 @@
     <XCODE_MAC targetFolder="Builds/MacOSX" smallIcon="nVz6Li" bigIcon="nVz6Li"
                extraFrameworks="IOBluetooth, ForceFeedback, IOKit" documentExtensions="noisette"
                customPList="&lt;plist&gt;&#10;&lt;dict&gt;&#10;&lt;key&gt;NSAppTransportSecurity&lt;/key&gt;&#10;&#9;&lt;dict&gt;&#10;&#9;&#9;&lt;key&gt;NSAllowsArbitraryLoads&lt;/key&gt;&#10;&#9;&#9;&lt;true/&gt;&#10;&#9;&lt;/dict&gt;&#10;&lt;/dict&gt;&#10;&lt;/plist&gt;"
-               externalLibraries="Servus&#10;hidapi&#10;JoyShockLibrary" microphonePermissionNeeded="1"
-               hardenedRuntimeOptions="com.apple.security.cs.allow-jit,com.apple.security.device.audio-input"
+               externalLibraries="Servus&#10;hidapi&#10;JoyShockLibrary&#10;mosquitto&#10;mosquittopp"
+               microphonePermissionNeeded="1" hardenedRuntimeOptions="com.apple.security.cs.allow-jit,com.apple.security.device.audio-input"
                extraDefs="JUCE_SUPPORT_CARBON=0&#10;JUCE_COREGRAPHICS_DRAW_ASYNC=1&#10;USE_ABLETONLINK=1&#10;LINK_PLATFORM_MACOSX=1"
                xcodeValidArchs="arm64,x86_64" embeddedFrameworks="../../External/sdl/lib/osx/SDL2.framework&#10;../../External/syphon/Syphon.framework"
                frameworkSearchPaths="../../External/sdl/lib/osx&#10;../../External/syphon">
       <CONFIGURATIONS>
         <CONFIGURATION name="Debug" isDebug="1" optimisation="1" targetName="Chataigne"
                        cppLanguageStandard="c++11" cppLibType="libc++" enablePluginBinaryCopyStep="1"
-                       libraryPath="../../External/servus/lib/osx/debug&#10;../../External/joycon/lib/osx"/>
+                       libraryPath="../../External/servus/lib/osx/debug&#10;../../External/joycon/lib/osx&#10;../../External/mosquitto/lib/osx"/>
         <CONFIGURATION name="Release" optimisation="3" targetName="Chataigne" enablePluginBinaryCopyStep="1"
-                       libraryPath="../../External/servus/lib/osx/release&#10;../../External/joycon/lib/osx"/>
+                       libraryPath="../../External/servus/lib/osx/release&#10;../../External/joycon/lib/osx&#10;../../External/mosquitto/lib/osx"/>
         <CONFIGURATION name="DebugSilicon" isDebug="1" optimisation="1" targetName="Chataigne"
                        cppLanguageStandard="c++11" cppLibType="libc++" enablePluginBinaryCopyStep="1"
-                       libraryPath="../../External/servus/lib/silicon/debug&#10;../../External/joycon/lib/silicon"/>
+                       libraryPath="../../External/servus/lib/silicon/debug&#10;../../External/joycon/lib/silicon&#10;../../External/mosquitto/lib/osx"/>
         <CONFIGURATION name="ReleaseSilicon" optimisation="3" targetName="Chataigne"
-                       enablePluginBinaryCopyStep="1" libraryPath="../../External/servus/lib/silicon/release&#10;../../External/joycon/lib/silicon"/>
+                       enablePluginBinaryCopyStep="1" libraryPath="../../External/servus/lib/silicon/release&#10;../../External/joycon/lib/silicon&#10;../../External/mosquitto/lib/osx"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
         <MODULEPATH id="juce_osc"/>
@@ -1773,16 +1794,16 @@
         <MODULEPATH id="juce_serial" path="Modules"/>
       </MODULEPATHS>
     </XCODE_MAC>
-    <LINUX_MAKE targetFolder="Builds/LinuxMakefile" externalLibraries="bluetooth&#10;Servus&#10;curl&#10;SDL2&#10;usb-1.0&#10;hidapi-hidraw&#10;JoyShockLibrary"
-                extraLinkerFlags="-Wl,-rpath,&quot;lib&quot;&#10;-Wl,--as-needed&#10;-Wl,--export-dynamic&#10;-fvisibility=default"
+    <LINUX_MAKE targetFolder="Builds/LinuxMakefile" externalLibraries="bluetooth&#10;Servus&#10;curl&#10;SDL2&#10;usb-1.0&#10;hidapi-hidraw&#10;JoyShockLibrary&#10;mosquitto&#10;mosquittopp&#10;ssl"
+                extraLinkerFlags="-Wl,-rpath,&quot;lib&quot;&#10;-Wl,--as-needed&#10;-Wl,--export-dynamic&#10;-fvisibility=default&#10;-Wl,-rpath-link,../../External/mosquitto/lib/linux/"
                 smallIcon="nVz6Li" bigIcon="nVz6Li" extraDefs="USE_ABLETONLINK=1&#10;LINK_PLATFORM_LINUX=1&#10;GDK_BACKEND=x11"
                 extraCompilerFlags="-Wno-multichar">
       <CONFIGURATIONS>
         <CONFIGURATION name="Debug" optimisation="3" targetName="Chataigne" linuxArchitecture="-m64"
-                       libraryPath="../../External/servus/lib/linux&#10;../../External/sdl/lib/linux&#10;/usr/lib/x86_64-linux-gnu/&#10;../../External/joycon/lib/linux"
+                       libraryPath="../../External/servus/lib/linux&#10;../../External/sdl/lib/linux&#10;/usr/lib/x86_64-linux-gnu/&#10;../../External/joycon/lib/linux&#10;../../External/mosquitto/lib/linux"
                        isDebug="1"/>
         <CONFIGURATION name="Release" optimisation="3" targetName="Chataigne" linuxArchitecture="-m64"
-                       libraryPath="../../External/servus/lib/linux&#10;../../External/sdl/lib/linux&#10;/usr/lib/x86_64-linux-gnu/&#10;../../External/joycon/lib/linux"/>
+                       libraryPath="../../External/servus/lib/linux&#10;../../External/sdl/lib/linux&#10;/usr/lib/x86_64-linux-gnu/&#10;../../External/joycon/lib/linux&#10;../../External/mosquitto/lib/linux"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
         <MODULEPATH id="juce_osc" path="JUCE/modules"/>
@@ -1886,8 +1907,9 @@
       <CONFIGURATIONS>
         <CONFIGURATION isDebug="0" name="Release" libraryPath="../../External/servus/lib/osx/release&#10;../../External/joycon/lib/osx"
                        osxCompatibility="10.10 SDK" macOSDeploymentTarget="10.10" binaryPath="Release"/>
-        <CONFIGURATION isDebug="0" name="ReleaseSilicon" libraryPath="../../External/servus/lib/silicon/release&#10;../../External/joycon/lib/silicon"
-                       osxCompatibility="10.10 SDK" macOSDeploymentTarget="10.10" binaryPath="Release"/>
+        <CONFIGURATION isDebug="0" name="ReleaseSilicon" libraryPath="../../External/servus/lib/silicon/release&#10;../../External/joycon/lib/silicon&#10;../../External/mosquitto/lib/osx"
+                       osxCompatibility="10.10 SDK" macOSDeploymentTarget="10.10" binaryPath="Release"
+                       extraLinkerFlags="-lmosquitto&#10;-lmosquittopp"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
         <MODULEPATH id="juce_timeline" path="Modules"/>
@@ -1914,14 +1936,14 @@
       </MODULEPATHS>
     </XCODE_MAC>
     <LINUX_MAKE targetFolder="Builds/Raspberry" smallIcon="nVz6Li" bigIcon="nVz6Li"
-                extraLinkerFlags="-Wl,-rpath,&quot;lib&quot;&#10;-Wl,--as-needed&#10;-Wl,--export-dynamic&#10;-fvisibility=default"
-                externalLibraries="bluetooth&#10;Servus&#10;curl&#10;SDL2&#10;usb-1.0&#10;hidapi-hidraw&#10;pthread&#10;JoyShockLibrary&#10;atomic"
+                extraLinkerFlags="-Wl,-rpath,&quot;lib&quot;&#10;-Wl,--as-needed&#10;-Wl,--export-dynamic&#10;-fvisibility=default&#10;-Wl,-rpath-link,../../External/mosquitto/lib/rpi/armhf"
+                externalLibraries="bluetooth&#10;Servus&#10;curl&#10;SDL2&#10;usb-1.0&#10;hidapi-hidraw&#10;pthread&#10;JoyShockLibrary&#10;atomic&#10;mosquitto&#10;mosquittopp&#10;ssl"
                 extraDefs="USE_ABLETONLINK=1&#10;LINK_PLATFORM_LINUX=1&#10;USE_GPIO=1"
                 extraCompilerFlags="-Wno-multichar">
       <CONFIGURATIONS>
-        <CONFIGURATION name="Debug" headerPath="/usr/include/freetype2" libraryPath="../../External/servus/lib/raspberry&#10;../../External/sdl/lib/raspberry&#10;../../External/joycon/lib/raspberry&#10;/usr/lib/arm-linux-gnueabihf"
+        <CONFIGURATION name="Debug" headerPath="/usr/include/freetype2" libraryPath="../../External/servus/lib/raspberry&#10;../../External/sdl/lib/raspberry&#10;../../External/joycon/lib/raspberry&#10;/usr/lib/arm-linux-gnueabihf&#10;../../External/mosquitto/lib/rpi/armhf"
                        linuxArchitecture="-march=armv8-a" optimisation="3" isDebug="1"/>
-        <CONFIGURATION name="Release" headerPath="/usr/include/freetype2" libraryPath="../../External/servus/lib/raspberry&#10;../../External/sdl/lib/raspberry&#10;../../External/joycon/lib/raspberry&#10;/usr/lib/arm-linux-gnueabihf&#10;"
+        <CONFIGURATION name="Release" headerPath="/usr/include/freetype2" libraryPath="../../External/servus/lib/raspberry&#10;../../External/sdl/lib/raspberry&#10;../../External/joycon/lib/raspberry&#10;/usr/lib/arm-linux-gnueabihf&#10;../../External/mosquitto/lib/rpi/armhf&#10;"
                        linuxArchitecture="-march=armv8-a"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
@@ -1950,13 +1972,13 @@
     </LINUX_MAKE>
     <LINUX_MAKE targetFolder="Builds/Raspberry64" extraDefs="USE_ABLETONLINK=1&#10;LINK_PLATFORM_LINUX=1&#10;USE_GPIO=1"
                 extraLinkerFlags="-Wl,-rpath,&quot;lib&quot;&#10;-Wl,--as-needed&#10;-Wl,--export-dynamic&#10;-fvisibility=default"
-                externalLibraries="bluetooth&#10;Servus&#10;curl&#10;SDL2&#10;usb-1.0&#10;hidapi-hidraw&#10;pthread&#10;JoyShockLibrary&#10;atomic"
+                externalLibraries="bluetooth&#10;Servus&#10;curl&#10;SDL2&#10;usb-1.0&#10;hidapi-hidraw&#10;pthread&#10;JoyShockLibrary&#10;atomic&#10;mosquitto&#10;mosquittopp&#10;ssl"
                 smallIcon="nVz6Li" bigIcon="nVz6Li" extraCompilerFlags="-Wno-multichar">
       <CONFIGURATIONS>
         <CONFIGURATION isDebug="1" name="Debug" headerPath="/usr/include/freetype2"
-                       libraryPath="../../External/servus/lib/raspberry64&#10;../../External/sdl/lib/raspberry64&#10;../../External/joycon/lib/raspberry64&#10;"/>
+                       libraryPath="../../External/servus/lib/raspberry64&#10;../../External/sdl/lib/raspberry64&#10;../../External/joycon/lib/raspberry64&#10;../../External/mosquitto/lib/rpi/aarch64&#10;"/>
         <CONFIGURATION isDebug="0" name="Release" headerPath="/usr/include/freetype2"
-                       libraryPath="../../External/servus/lib/raspberry64&#10;../../External/sdl/lib/raspberry64&#10;../../External/joycon/lib/raspberry64&#10;"/>
+                       libraryPath="../../External/servus/lib/raspberry64&#10;../../External/sdl/lib/raspberry64&#10;../../External/joycon/lib/raspberry64&#10;../../External/mosquitto/lib/rpi/aarch64&#10;"/>
       </CONFIGURATIONS>
       <MODULEPATHS>
         <MODULEPATH id="juce_audio_basics" path="JUCE/modules"/>
