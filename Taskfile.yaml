@@ -502,6 +502,13 @@ tasks:
   # CLANG TOOLS INTEGRATION (For Zed, LSP, and Symbol Navigation)
   # ============================================================================
 
+  windows:generate-compile-commands:
+    desc: Generate compile_commands.json for Windows (MSBuild logger)
+    platforms: [windows]
+    deps: [setup]
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File Tools/windows_generate_compile_commands.ps1 -ProjectName "{{.PROJECT_NAME}}" -Solution "Builds/VisualStudio2022_CI/{{.PROJECT_NAME}}.sln" -Configuration Release -Platform x64 -OutFile compile_commands.json
+
   clang:generate-compile-commands:
     desc: Generate compile_commands.json for clang tools (LSP integration for Zed)
     cmds:
@@ -524,7 +531,7 @@ tasks:
         fi
 
         cd Builds/LinuxMakefile
-        bear -- make -j{{.NPROC}} CONFIG=Release 2>&1 | head -50
+        bear -- make -j{{.NPROC}} CONFIG=Release
 
         if [ -f "compile_commands.json" ]; then
           mv compile_commands.json ../../
@@ -642,186 +649,6 @@ tasks:
         {{else}}
         echo "Static analysis requires bear or scan-build (recommended on Linux/macOS)"
         {{end}}
-
-  # ============================================================================
-  # ZED EDITOR INTEGRATION
-  # ============================================================================
-
-  zed:setup:
-    desc: Setup Zed editor configuration for optimal C++ navigation and symbols
-    cmds:
-      - |
-        echo "Setting up Zed C++ environment..."
-        {{if eq .OS "linux"}}
-        mkdir -p ~/.config/zed/settings
-
-        # Create zed settings with clang configuration
-        cat > zed_clang_config.txt << 'EOF'
-        Add the following to ~/.config/zed/settings.json:
-
-        {
-          "lsp": {
-            "clangd": {
-              "initialization_options": {
-                "clangdFileStatus": true,
-                "all_scopes_completion": true,
-                "completion_style": "detailed",
-                "header_insertion_location": "iwyu"
-              },
-              "settings": {
-                "clangd.arguments": [
-                  "-query-driver={{.PROJECT_NAME}}",
-                  "--compile-commands-dir=.",
-                  "--header-insertion=iwyu",
-                  "--clang-tidy",
-                  "--all-scopes-completion",
-                  "--completion-style=detailed",
-                  "--enable-config"
-                ]
-              }
-            }
-          },
-          "languages": {
-            "C++": {
-              "language_servers": ["clangd"],
-              "formatter": {
-                "external": {
-                  "command": "clang-format",
-                  "arguments": ["-style=file"]
-                }
-              }
-            }
-          }
-        }
-
-        EOF
-        cat zed_clang_config.txt
-        {{else if eq .OS "darwin"}}
-        echo "Zed setup for macOS..."
-        mkdir -p ~/Library/Application\ Support/Zed/settings
-        echo "See generated zed_clang_config.txt for configuration"
-        {{else if eq .OS "windows"}}
-        echo "Zed setup for Windows..."
-        mkdir -p "$APPDATA\\Zed\\settings"
-        echo "See generated zed_clang_config.txt for configuration"
-        {{end}}
-
-  zed:open:
-    desc: Open current directory in Zed editor
-    cmds:
-      - |
-        {{if eq .OS "linux"}}
-        zed .
-        {{else if eq .OS "darwin"}}
-        open -a Zed .
-        {{else if eq .OS "windows"}}
-        zed .
-        {{end}}
-
-  zed:compile-db:
-    desc: Generate compile_commands.json and setup Zed for symbol navigation
-    cmds:
-      - task: clang:generate-compile-commands
-      - task: zed:setup
-      - echo "✓ Zed C++ environment configured. Open the project in Zed for full symbol navigation."
-
-  # ============================================================================
-  # CLANG LANGUAGE SERVER SETUP
-  # ============================================================================
-
-  lsp:install-clangd:
-    desc: Install or update clangd language server
-    cmds:
-      - |
-        echo "Installing clangd..."
-        {{if eq .OS "windows"}}
-        powershell -Command "scoop install llvm"
-        {{else if eq .OS "darwin"}}
-        brew install llvm
-        {{else if eq .OS "linux"}}
-        sudo apt-get update && sudo apt-get install -y clang-tools bear
-        {{end}}
-
-  lsp:create-project-config:
-    desc: Create .clangd configuration file for project-specific settings
-    cmds:
-      - |
-        cat > .clangd << 'EOF'
-        ---
-        # Clangd Configuration for Chataigne
-        # This file configures clangd for language server protocol integration
-
-        CompileFlags:
-          Add:
-            - "-std=c++17"
-            - "-DLINUX=1"
-            - "-DNDEBUG=1"
-            - "-DVST_LOGGING=0"
-            - "-DUSE_ABLETONLINK=1"
-            - "-DLINK_PLATFORM_LINUX=1"
-            - "-DGDK_BACKEND=x11"
-            - "-fPIC"
-          Remove:
-            - "-m64"
-            - "-Wno-multichar"
-          CompilationDatabase: "compile_commands.json"
-
-        Index:
-          Background: Build
-          StandardLibraryMapping:
-            stdlibc++: "libstdc++"
-
-        InlayHints:
-          Enabled: true
-          ParameterHints: true
-          TypeHints: true
-          DeducedTypes: true
-
-        Hover:
-          ShowAKA: true
-
-        SemanticTokens: true
-        EOF
-        echo "✓ .clangd configuration created"
-
-  clang:install-tools:
-    desc: Install all necessary clang tools (clang-format, clang-tidy, bear, etc.)
-    cmds:
-      - |
-        {{if eq .OS "windows"}}
-        echo "Installing clang tools on Windows..."
-        powershell -Command "scoop install llvm bear"
-        {{else if eq .OS "darwin"}}
-        echo "Installing clang tools on macOS..."
-        brew install llvm bear clang-format
-        brew link --force llvm
-        {{else if eq .OS "linux"}}
-        echo "Installing clang tools on Linux..."
-        sudo apt-get update
-        sudo apt-get install -y \
-          clang clang-format clang-tools \
-          bear clangd \
-          libclang-dev libclang1
-        {{end}}
-
-  clang:full-setup:
-    desc: Complete clang tooling setup (install tools, generate compile DB, setup LSP)
-    cmds:
-      - task: clang:install-tools
-      - task: setup
-      - task: clang:generate-compile-commands
-      - task: lsp:create-project-config
-      - task: zed:setup
-      - echo ""
-      - echo "✓✓✓ CLANG TOOLS SETUP COMPLETE ✓✓✓"
-      - echo ""
-      - echo "Next steps:"
-      # - echo "  1. Open project in Zed: task zed:open"
-      # - echo "  2. Format code: task clang:format-fix"
-      # - echo "  3. Check formatting: task clang:format-check"
-      # - echo "  4. Run analysis: task clang:tidy"
-      - echo ""
-      - echo "Your Zed editor should now have full symbol navigation and code completion!"
 
   launch:debug:
     desc: Build and launch Chataigne in debug mode

@@ -61,7 +61,7 @@ Builds/VisualStudio2017_Win7/
 .vscode
 
 # Clang tools and LSP
-compile_commands.json
+compile_commands.json*
 .clangd-index/
 .clang-tidy
 *.clang-format-cache
