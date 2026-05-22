@@ -31,13 +31,29 @@ tasks:
   # WINDOWS BUILD TASKS
   # ============================================================================
 
-  windows:build:
-    desc: Build for Windows x64
+  windows:build-release:
+    desc: Build Release for Windows x64 with dependencies
     platforms: [windows]
     deps: [setup]
     cmds:
       - cmd: 'msbuild "Builds/VisualStudio2022_CI/{{.PROJECT_NAME}}.sln" /p:PreferredToolArchitecture=x64 /verbosity:normal /p:Configuration=Release'
         shell: powershell
+      - task: windows:download-release-dependencies
+
+  windows:build-debug:
+    desc: Build Debug for Windows x64 with dependencies
+    platforms: [windows]
+    deps: [setup]
+    cmds:
+      - cmd: 'msbuild "Builds/VisualStudio2022_CI/{{.PROJECT_NAME}}.sln" /p:PreferredToolArchitecture=x64 /verbosity:normal /p:Configuration=Debug'
+        shell: powershell
+      - task: windows:download-debug-dependencies
+
+  windows:build:
+    desc: Build for Windows x64 (Release)
+    platforms: [windows]
+    cmds:
+      - task: windows:build-release
 
   windows:clean:
     desc: Clean Windows build artifacts
@@ -52,6 +68,44 @@ tasks:
     cmds:
       - task: windows:clean
       - task: windows:build
+
+  windows:download-release-dependencies:
+    desc: Download DLL dependencies for Release build
+    platforms: [windows]
+    cmds:
+      - |
+        powershell -Command "
+          \$depFile = 'Binaries\CI\App\Release\hidapi.dll'
+          if (-Not (Test-Path \$depFile)) {
+            Write-Host 'Downloading Release dependencies from https://benjamin.kuperberg.fr/chataigne/user/data/{{.PROJECT_NAME}}-win-x64-release-dependencies.zip'
+            Invoke-WebRequest 'https://benjamin.kuperberg.fr/chataigne/user/data/{{.PROJECT_NAME}}-win-x64-release-dependencies.zip' -OutFile 'Binaries\CI\App\Release\deps.zip'
+            Write-Host 'Extracting dependencies to Binaries\CI\App'
+            & 7z e 'Binaries\CI\App\Release\deps.zip' -aoa -o'Binaries\CI\App\Release'
+            Remove-Item 'Binaries\CI\App\Release\deps.zip'
+            Write-Host 'Release dependencies ready!'
+          } else {
+            Write-Host 'Release dependencies already present, skipping download.'
+          }
+        "
+
+  windows:download-debug-dependencies:
+    desc: Download DLL dependencies for Debug build
+    platforms: [windows]
+    cmds:
+      - |
+        powershell -Command "
+          \$depFile = 'Binaries\CI\App\Debug\hidapi.dll'
+          if (-Not (Test-Path \$depFile)) {
+            Write-Host 'Downloading Debug dependencies from https://benjamin.kuperberg.fr/chataigne/user/data/{{.PROJECT_NAME}}-win-x64-debug-dependencies.zip'
+            Invoke-WebRequest 'https://benjamin.kuperberg.fr/chataigne/user/data/{{.PROJECT_NAME}}-win-x64-debug-dependencies.zip' -OutFile 'Binaries\CI\App\Debug\deps.zip'
+            Write-Host 'Extracting dependencies to Binaries\CI\App\Debug'
+            & 7z e 'Binaries\CI\App\Debug\deps.zip' -aoa -o'Binaries\CI\App\Debug'
+            Remove-Item 'Binaries\CI\App\Debug\deps.zip'
+            Write-Host 'Debug dependencies ready!'
+          } else {
+            Write-Host 'Debug dependencies already present, skipping download.'
+          }
+        "
 
   # ============================================================================
   # MACOS BUILD TASKS
@@ -771,26 +825,22 @@ tasks:
 
   launch:debug:
     desc: Build and launch Chataigne in debug mode
+    platforms: [windows]
     cmds:
-      - task: windows:build
-      - task: windows:download-dependencies
+      - task: windows:build-debug
+      - cmd: 'Binaries\CI\App\Debug\Chataigne.exe'
+        shell: powershell
+
+  launch:release:
+    desc: Build and launch Chataigne in release mode
+    platforms: [windows]
+    cmds:
+      - task: windows:build-release
       - cmd: 'Binaries\CI\App\Chataigne.exe'
         shell: powershell
 
   windows:download-runtime-dependencies:
-    desc: Download required dependencies for running the application
+    desc: Download required dependencies for running the application (deprecated - use windows:download-release-dependencies or windows:download-debug-dependencies)
     platforms: [windows]
     cmds:
-      - |
-        powershell -Command "
-          if (-Not (Test-Path 'Binaries\CI\App\servus.dll')) {
-            Write-Host 'Downloading dependencies from https://benjamin.kuperberg.fr/chataigne/user/data/{{.PROJECT_NAME}}-win-x64-debug-dependencies.zip'
-            Invoke-WebRequest 'https://benjamin.kuperberg.fr/chataigne/user/data/{{.PROJECT_NAME}}-win-x64-debug-dependencies.zip' -OutFile 'Binaries\CI\App\deps.zip'
-            Write-Host 'Extracting dependencies to Binaries\CI\App'
-            & 7z e 'Binaries\CI\App\deps.zip' -aoa -o'Binaries\CI\App'
-            Remove-Item 'Binaries\CI\App\deps.zip'
-            Write-Host 'Dependencies ready!'
-          } else {
-            Write-Host 'Dependencies already present, skipping download.'
-          }
-        "
+      - task: windows:download-release-dependencies
