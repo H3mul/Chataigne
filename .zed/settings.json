@@ -1,0 +1,71 @@
+{
+  // LSP and C++ specific settings
+  "languages": {
+    "C++": {
+      "language_servers": ["clangd"],
+      "formatter": {
+        "external": {
+          "command": "clang-format",
+          "arguments": ["-style=file"]
+        }
+      },
+      "code_actions_on_format": {
+        "source.fixAll.clang-tidy": true
+      }
+    }
+  },
+
+  // LSP configuration for clangd
+  "lsp": {
+    "clangd": {
+      "initialization_options": {
+        // File status monitoring
+        "clangdFileStatus": true,
+        "clangdInlayHints": true,
+        
+        // Completion settings
+        "all_scopes_completion": true,
+        "completion_style": "detailed",
+        
+        // Include insertion
+        "header_insertion_location": "iwyu",
+        "header_insertion": "iwyu",
+        
+        // Diagnostics
+        "diagnosticsStyle": "clangd"
+      },
+      "settings": {
+        "clangd.arguments": [
+          // Compilation database
+          "--compile-commands-dir=.",
+          
+          // Include handling
+          "--header-insertion=iwyu",
+          
+          // Background indexing
+          "--background-index",
+          "--background-index-priority=low",
+          
+          // Analysis
+          "--clang-tidy",
+          "--clang-tidy-checks=readability-*,modernize-*,performance-*",
+          
+          // Completion
+          "--all-scopes-completion",
+          "--completion-style=detailed",
+          
+          // Other options
+          "--enable-config",
+          "--pch-storage=memory"
+        ],
+        "clangd.fallbackFlags": [
+          "-std=c++17",
+          "-fPIC"
+        ]
+      }
+    }
+  },
+
+  // Format on save
+  "format_on_save": "on",
+}

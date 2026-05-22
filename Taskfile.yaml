@@ -1,0 +1,796 @@
+# Taskfile for Chataigne - Local Build and Test Tasks
+# This file is based on the GitHub Actions workflow (.github/workflows/build.yml)
+# Use: task --list to see all available tasks
+# Use: task <task-name> to run a task
+
+version: "3"
+
+vars:
+  PROJECT_NAME: Chataigne
+  PACKAGES_VERSION: "1.2.11"
+  # Detect OS for cross-platform support
+  OS_NAME: "{{OS}}"
+  NPROC: '{{if eq .OS "windows"}}1{{else}}$(nproc){{end}}'
+
+env:
+  ProjectName: "{{.PROJECT_NAME}}"
+  PackagesVersion: "{{.PACKAGES_VERSION}}"
+
+tasks:
+  default:
+    desc: Display available tasks
+    cmds:
+      - task --list
+
+  setup:
+    desc: Clone JUCE and setup submodules
+    cmds:
+      - git submodule update --init --recursive
+
+  # ============================================================================
+  # WINDOWS BUILD TASKS
+  # ============================================================================
+
+  windows:build:
+    desc: Build for Windows x64
+    platforms: [windows]
+    deps: [setup]
+    cmds:
+      - cmd: 'msbuild "Builds/VisualStudio2022_CI/{{.PROJECT_NAME}}.sln" /p:PreferredToolArchitecture=x64 /verbosity:normal /p:Configuration=Release'
+        shell: powershell
+
+  windows:clean:
+    desc: Clean Windows build artifacts
+    platforms: [windows]
+    cmds:
+      - cmd: 'msbuild "Builds/VisualStudio2022_CI/{{.PROJECT_NAME}}.sln" /t:Clean /p:Configuration=Debug'
+        shell: powershell
+
+  windows:rebuild:
+    desc: Clean and rebuild for Windows
+    platforms: [windows]
+    cmds:
+      - task: windows:clean
+      - task: windows:build
+
+  # ============================================================================
+  # MACOS BUILD TASKS
+  # ============================================================================
+
+  macos:build-intel:
+    desc: Build for macOS x86_64 (Intel)
+    platforms: [darwin]
+    deps: [setup]
+    cmds:
+      - xcodebuild -project "Builds/MacOSX_CI/{{.PROJECT_NAME}}.xcodeproj" -scheme "{{.PROJECT_NAME}} - App" -configuration Release -arch x86_64 -derivedDataPath build ARCHS=x86_64
+
+  macos:build-silicon:
+    desc: Build for macOS arm64 (Apple Silicon)
+    platforms: [darwin]
+    deps: [setup]
+    cmds:
+      - xcodebuild -project "Builds/MacOSX_CI/{{.PROJECT_NAME}}.xcodeproj" -scheme "{{.PROJECT_NAME}} - App" -configuration ReleaseSilicon -arch arm64 -derivedDataPath build ARCHS=arm64
+
+  macos:bundle-libs-silicon:
+    desc: Bundle dynamic libraries for Silicon build (required for packaging)
+    platforms: [darwin]
+    cmds:
+      - |
+        APP_PATH="Release/{{.PROJECT_NAME}}.app"
+        FRAMEWORKS_DIR="$APP_PATH/Contents/Frameworks"
+        EXECUTABLE="$APP_PATH/Contents/MacOS/{{.PROJECT_NAME}}"
+
+        if [ ! -d "$APP_PATH" ]; then
+          echo "::error::App not found at '$APP_PATH'"
+          exit 1
+        fi
+
+        mkdir -p "$FRAMEWORKS_DIR"
+
+        cp External/mosquitto/lib/osx/libmosquitto.dylib "$FRAMEWORKS_DIR/"
+        cp External/mosquitto/lib/osx/libmosquittopp.dylib "$FRAMEWORKS_DIR/"
+        cp External/mosquitto/lib/osx/libssl.dylib "$FRAMEWORKS_DIR/"
+        cp External/mosquitto/lib/osx/libcrypto.dylib "$FRAMEWORKS_DIR/"
+
+        install_name_tool -id @rpath/libmosquitto.dylib "$FRAMEWORKS_DIR/libmosquitto.dylib"
+        install_name_tool -id @rpath/libmosquittopp.dylib "$FRAMEWORKS_DIR/libmosquittopp.dylib"
+        install_name_tool -id @rpath/libssl.dylib "$FRAMEWORKS_DIR/libssl.dylib"
+        install_name_tool -id @rpath/libcrypto.dylib "$FRAMEWORKS_DIR/libcrypto.dylib"
+
+        install_name_tool -change /usr/local/lib/libmosquitto.dylib @rpath/libmosquitto.dylib "$FRAMEWORKS_DIR/libmosquittopp.dylib" || true
+        install_name_tool -change libmosquitto.dylib @rpath/libmosquitto.dylib "$FRAMEWORKS_DIR/libmosquittopp.dylib" || true
+        install_name_tool -change libssl.dylib @rpath/libssl.dylib "$FRAMEWORKS_DIR/libmosquittopp.dylib" || true
+        install_name_tool -change libcrypto.dylib @rpath/libcrypto.dylib "$FRAMEWORKS_DIR/libmosquittopp.dylib" || true
+
+        install_name_tool -add_rpath @executable_path/../Frameworks "$EXECUTABLE" || true
+        codesign --force --deep --sign - "$APP_PATH"
+
+  macos:clean:
+    desc: Clean macOS build artifacts
+    platforms: [darwin]
+    cmds:
+      - rm -rf build
+
+  # ============================================================================
+  # LINUX BUILD TASKS
+  # ============================================================================
+
+  linux:deps:
+    desc: Install Linux build dependencies (Ubuntu/Debian)
+    platforms: [linux]
+    cmds:
+      - |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libasound2-dev libjack-jackd2-dev ladspa-sdk \
+          libfreetype6-dev libx11-dev libxcomposite-dev \
+          libxcursor-dev libxinerama-dev libxext-dev \
+          libxrandr-dev libxrender-dev libwebkit2gtk-4.0-dev \
+          libglu1-mesa-dev mesa-common-dev libcurl4-openssl-dev \
+          libssl-dev libmosquitto-dev libmosquittopp-dev libbluetooth-dev \
+          libusb-1.0-0-dev libhidapi-dev libsdl2-dev
+
+  linux:build:
+    desc: Build for Linux x64
+    platforms: [linux]
+    deps: [setup, linux:deps]
+    cmds:
+      - |
+        # Clean blobs to force system linking
+        rm -rf External/mosquitto/lib/linux/
+        rm -rf External/sdl/lib/linux/
+
+        cd Builds/LinuxMakefile
+        make -j{{.NPROC}} CONFIG=Release
+
+  linux:abi-check:
+    desc: Check ABI compatibility (glibc/OpenSSL)
+    platforms: [linux]
+    cmds:
+      - |
+        set -euo pipefail
+        BIN=Builds/LinuxMakefile/build/{{.PROJECT_NAME}}
+
+        if [ ! -f "$BIN" ]; then
+          echo "Binary not found at $BIN"
+          exit 1
+        fi
+
+        MAX_GLIBC=$(objdump -T "$BIN" | grep -o 'GLIBC_[0-9.]\+' | sed 's/GLIBC_//' | sort -V | tail -1)
+        echo "Detected max GLIBC symbol: $MAX_GLIBC"
+
+        if dpkg --compare-versions "$MAX_GLIBC" gt "2.35"; then
+          echo "GLIBC baseline too new ($MAX_GLIBC). Must stay <= 2.35 for Ubuntu 22.04 baseline compatibility."
+          exit 1
+        fi
+
+        NEEDED=$(readelf -d "$BIN" | awk '/NEEDED/ {print $5}' | tr -d '[]')
+        echo "Detected NEEDED libs:"
+        echo "$NEEDED"
+
+        if echo "$NEEDED" | grep -E 'libssl\.so\.1\.1|libcrypto\.so\.1\.1' >/dev/null; then
+          echo "Binary links against OpenSSL 1.1, which is not acceptable."
+          exit 1
+        fi
+
+  linux:clean:
+    desc: Clean Linux build artifacts
+    platforms: [linux]
+    cmds:
+      - |
+        cd Builds/LinuxMakefile
+        make clean
+
+  # ============================================================================
+  # RASPBERRY PI BUILD TASKS (Cross-Compile)
+  # ============================================================================
+
+  rpi:setup-aarch64:
+    desc: Setup cross-compiler for Raspberry Pi 64-bit (aarch64)
+    platforms: [linux]
+    cmds:
+      - |
+        # Setup Multi-Arch Apt
+        sudo dpkg --add-architecture arm64
+        sudo sed -i 's/^deb http/deb [arch=amd64] http/g' /etc/apt/sources.list
+        echo "deb [arch=arm64] http://deb.debian.org/debian bullseye main" | sudo tee /etc/apt/sources.list.d/arm64.list
+
+        # Install cross-compiler
+        sudo apt-get update
+        sudo apt-get install -y \
+          crossbuild-essential-arm64 \
+          libasound2-dev:arm64 libjack-jackd2-dev:arm64 ladspa-sdk:arm64 \
+          libfreetype6-dev:arm64 libx11-dev:arm64 libxcomposite-dev:arm64 \
+          libxcursor-dev:arm64 libxinerama-dev:arm64 libxext-dev:arm64 \
+          libxrandr-dev:arm64 libxrender-dev:arm64 libwebkit2gtk-4.0-dev:arm64 \
+          libglu1-mesa-dev:arm64 mesa-common-dev:arm64 libcurl4-openssl-dev:arm64 \
+          libssl-dev:arm64 libmosquitto-dev:arm64 libmosquittopp-dev:arm64 \
+          libbluetooth-dev:arm64 libusb-1.0-0-dev:arm64 libhidapi-dev:arm64
+
+  rpi:setup-armhf:
+    desc: Setup cross-compiler for Raspberry Pi 32-bit (armhf)
+    platforms: [linux]
+    cmds:
+      - |
+        # Setup Multi-Arch Apt
+        sudo dpkg --add-architecture armhf
+        sudo sed -i 's/^deb http/deb [arch=amd64] http/g' /etc/apt/sources.list
+        echo "deb [arch=armhf] http://deb.debian.org/debian bullseye main" | sudo tee /etc/apt/sources.list.d/armhf.list
+
+        # Install cross-compiler
+        sudo apt-get update
+        sudo apt-get install -y \
+          crossbuild-essential-armhf \
+          libasound2-dev:armhf libjack-jackd2-dev:armhf ladspa-sdk:armhf \
+          libfreetype6-dev:armhf libx11-dev:armhf libxcomposite-dev:armhf \
+          libxcursor-dev:armhf libxinerama-dev:armhf libxext-dev:armhf \
+          libxrandr-dev:armhf libxrender-dev:armhf libwebkit2gtk-4.0-dev:armhf \
+          libglu1-mesa-dev:armhf mesa-common-dev:armhf libcurl4-openssl-dev:armhf \
+          libssl-dev:armhf libmosquitto-dev:armhf libmosquittopp-dev:armhf \
+          libbluetooth-dev:armhf libusb-1.0-0-dev:armhf libhidapi-dev:armhf
+
+  rpi:build-aarch64:
+    desc: Build for Raspberry Pi 64-bit (aarch64)
+    platforms: [linux]
+    deps: [setup]
+    cmds:
+      - |
+        rm -rf External/mosquitto/lib/linux/
+        rm -rf External/sdl/lib/linux/
+
+        cd Builds/Raspberry64
+        make -j{{.NPROC}} CONFIG=Release ARCH=aarch64-linux-gnu CFLAGS="-march=armv8-a"
+
+  rpi:build-armhf:
+    desc: Build for Raspberry Pi 32-bit (armhf)
+    platforms: [linux]
+    deps: [setup]
+    cmds:
+      - |
+        rm -rf External/mosquitto/lib/linux/
+        rm -rf External/sdl/lib/linux/
+
+        cd Builds/Raspberry
+        make -j{{.NPROC}} CONFIG=Release ARCH=arm-linux-gnueabihf CFLAGS="-march=armv7-a -mfpu=neon"
+
+  # ============================================================================
+  # GENERAL BUILD & TEST TASKS
+  # ============================================================================
+
+  build:
+    desc: Build for current platform
+    cmds:
+      - |
+        {{if or (eq .OS "windows") (eq .OS "Windows_NT")}}
+        task windows:build
+        {{else if eq .OS "darwin"}}
+        task macos:build-intel
+        {{else if eq .OS "linux"}}
+        task linux:build
+        {{else}}
+        echo "Unsupported platform: {{.OS}}"
+        exit 1
+        {{end}}
+
+  clean:
+    desc: Clean build artifacts for current platform
+    cmds:
+      - |
+        {{if eq .OS "windows"}}
+        task windows:clean
+        {{else if eq .OS "darwin"}}
+        task macos:clean
+        {{else if eq .OS "linux"}}
+        task linux:clean
+        {{else}}
+        echo "Unsupported platform: {{.OS}}"
+        exit 1
+        {{end}}
+
+  rebuild:
+    desc: Clean and rebuild for current platform
+    cmds:
+      - task: clean
+      - task: build
+
+  test:
+    desc: Run smoke tests on built binary
+    cmds:
+      - |
+        {{if eq .OS "windows"}}
+        ./Binaries/CI/App/{{.PROJECT_NAME}}.exe --help || echo "Test completed with exit code: $?"
+        {{else if eq .OS "darwin"}}
+        ./Release/{{.PROJECT_NAME}}.app/Contents/MacOS/{{.PROJECT_NAME}} --help || echo "Test completed with exit code: $?"
+        {{else if eq .OS "linux"}}
+        ./Binaries/LinuxMakefile/build/{{.PROJECT_NAME}} --help || echo "Test completed with exit code: $?"
+        {{else}}
+        echo "Unsupported platform: {{.OS}}"
+        exit 1
+        {{end}}
+
+  # ============================================================================
+  # DOCKER BUILD TASKS (For CI/CD simulation)
+  # ============================================================================
+
+  docker:linux-build:
+    desc: Build Linux using Docker (simulates CI environment)
+    requires:
+      vars: [DOCKERFILE]
+    cmds:
+      - |
+        docker build -f {{.DOCKERFILE}} -t chataigne-linux:latest .
+        docker run --rm -v $(pwd):/workspace chataigne-linux:latest \
+          bash -c "cd /workspace && task linux:build"
+
+  docker:ubuntu2204:
+    desc: Test ABI compatibility in Ubuntu 22.04 Docker container
+    cmds:
+      - |
+        docker run --rm -v $(pwd):/ws ubuntu:22.04 bash -lc '
+          set -euo pipefail
+          apt-get update >/dev/null
+          apt-get install -y --no-install-recommends binutils >/dev/null
+          BIN=/ws/Builds/LinuxMakefile/build/{{.PROJECT_NAME}}
+          if [ -f "$BIN" ]; then
+            MAX_GLIBC=$(objdump -T "$BIN" | grep -o "GLIBC_[0-9.]\\+" | sed "s/GLIBC_//" | sort -V | tail -1)
+            echo "Max GLIBC symbol in Ubuntu 22.04: $MAX_GLIBC"
+            dpkg --compare-versions "$MAX_GLIBC" le "2.35" && echo "✓ GLIBC OK" || echo "✗ GLIBC TOO NEW"
+          fi
+        '
+
+  docker:ubuntu2404:
+    desc: Test ABI compatibility in Ubuntu 24.04 Docker container
+    cmds:
+      - |
+        docker run --rm -v $(pwd):/ws ubuntu:24.04 bash -lc '
+          set -euo pipefail
+          apt-get update >/dev/null
+          apt-get install -y --no-install-recommends binutils >/dev/null
+          BIN=/ws/Builds/LinuxMakefile/build/{{.PROJECT_NAME}}
+          if [ -f "$BIN" ]; then
+            MAX_GLIBC=$(objdump -T "$BIN" | grep -o "GLIBC_[0-9.]\\+" | sed "s/GLIBC_//" | sort -V | tail -1)
+            echo "Max GLIBC symbol in Ubuntu 24.04: $MAX_GLIBC"
+          fi
+        '
+
+  # ============================================================================
+  # UTILITY TASKS
+  # ============================================================================
+
+  projucer:regenerate:
+    desc: Regenerate build files using Projucer
+    cmds:
+      - echo "Regenerating build files from {{.PROJECT_NAME}}.jucer..."
+      - |
+        {{if eq .OS "windows"}}
+        ./JUCE/Projucer.exe --resave {{.PROJECT_NAME}}.jucer
+        {{else if eq .OS "darwin"}}
+        ./JUCE/Projucer.app/Contents/MacOS/Projucer --resave {{.PROJECT_NAME}}.jucer
+        {{else if eq .OS "linux"}}
+        ./JUCE/Builds/LinuxMakefile/build/Projucer --resave {{.PROJECT_NAME}}.jucer
+        {{else}}
+        echo "Unsupported platform: {{.OS}}"
+        exit 1
+        {{end}}
+
+  version:
+    desc: Display build version information
+    cmds:
+      - echo "Project Name {{.PROJECT_NAME}}"
+      - echo "Packages Version {{.PACKAGES_VERSION}}"
+      - echo "OS {{.OS_NAME}}"
+
+  help:
+    desc: Show this help message
+    cmds:
+      - task --list
+
+  # ============================================================================
+  # INSTALLATION TASKS
+  # ============================================================================
+
+  install:windows:
+    desc: Install Windows executable (local installation)
+    platforms: [windows]
+    cmds:
+      - echo "Please run the installer manually or use the following command:"
+      - echo "msiexec /i Binaries/CI/App/Chataigne.msi"
+
+  install:macos:
+    desc: Install macOS application (copy to Applications folder)
+    platforms: [darwin]
+    cmds:
+      - cp -r Release/{{.PROJECT_NAME}}.app /Applications/
+
+  install:linux:
+    desc: Install Linux binary to ~/.local/bin
+    platforms: [linux]
+    cmds:
+      - mkdir -p ~/.local/bin
+      - cp Binaries/LinuxMakefile/build/{{.PROJECT_NAME}} ~/.local/bin/
+      - echo "Installed to ~/.local/bin/{{.PROJECT_NAME}}"
+      - echo "Make sure ~/.local/bin is in your PATH"
+
+  # ============================================================================
+  # DEBUGGING TASKS
+  # ============================================================================
+
+  debug:info:
+    desc: Display debug information about the build environment
+    cmds:
+      - echo "=== Build Environment ==="
+      - echo "OS {{.OS_NAME}}"
+      - echo "Project {{.PROJECT_NAME}}"
+      - echo "Version {{.PACKAGES_VERSION}}"
+      - |
+        {{if eq .OS "windows"}}
+        echo ""
+        echo "=== Windows Environment ==="
+        msbuild /version || echo "MSBuild not found"
+        {{else if eq .OS "darwin"}}
+        echo ""
+        echo "=== macOS Environment ==="
+        xcodebuild -version
+        {{else if eq .OS "linux"}}
+        echo ""
+        echo "=== Linux Environment ==="
+        gcc --version | head -n1
+        make --version | head -n1
+        {{end}}
+
+  debug:list-builds:
+    desc: List available build configurations
+    cmds:
+      - echo "Available build folders:"
+      - ls -la Builds/
+
+  # ============================================================================
+  # CLANG TOOLS INTEGRATION (For Zed, LSP, and Symbol Navigation)
+  # ============================================================================
+
+  clang:generate-compile-commands:
+    desc: Generate compile_commands.json for clang tools (LSP integration for Zed)
+    cmds:
+      - |
+        {{if or (eq .OS "windows") (eq .OS "Windows_NT")}}
+        echo "Generating compile_commands.json from Visual Studio project..."
+        task windows:generate-compile-commands
+        {{else if eq .OS "darwin"}}
+        echo "Generating compile_commands.json for macOS..."
+        xcodebuild -project "Builds/MacOSX_CI/{{.PROJECT_NAME}}.xcodeproj" \
+          -scheme "{{.PROJECT_NAME}} - App" \
+          -configuration Release \
+          -arch x86_64 \
+          clean build | xcpretty -r json-compilation-database -o compile_commands.json
+        {{else if eq .OS "linux"}}
+        echo "Generating compile_commands.json for Linux..."
+        if [ ! -f "Builds/LinuxMakefile/Makefile" ]; then
+          echo "::error::Makefile not found. Run 'task setup' first."
+          exit 1
+        fi
+
+        cd Builds/LinuxMakefile
+        bear -- make -j{{.NPROC}} CONFIG=Release 2>&1 | head -50
+
+        if [ -f "compile_commands.json" ]; then
+          mv compile_commands.json ../../
+          echo "✓ compile_commands.json generated successfully"
+        else
+          echo "::warning::bear did not generate compile_commands.json. Attempting manual generation..."
+          task linux:generate-compile-commands-manual
+        fi
+        {{end}}
+
+  linux:generate-compile-commands-manual:
+    desc: Generate compile_commands.json manually for Linux (when bear is unavailable)
+    platforms: [linux]
+    cmds:
+      - |
+        set -euo pipefail
+        PROJECT_NAME="{{.PROJECT_NAME}}"
+        BUILD_DIR="Builds/LinuxMakefile"
+        OUTPUT_FILE="compile_commands.json"
+
+        # Extract compilation flags from Makefile
+        CPPFLAGS=$(grep -o 'JUCE_CPPFLAGS :=.*' "$BUILD_DIR/Makefile" | sed 's/JUCE_CPPFLAGS := //' | sed 's/ \$(CPPFLAGS)//' || echo "")
+        CXXFLAGS=$(grep -o 'JUCE_CXXFLAGS +=' "$BUILD_DIR/Makefile" | sed 's/JUCE_CXXFLAGS += //' || echo "-std=c++17")
+        INCLUDE_FLAGS="-I../../JuceLibraryCode -I../../JUCE/modules -I../../Modules -I../../Source -I../../External/wiiuse -I../../External/asio -I../../External/asiodriver -I../../External/kinect/include -I../../External/joycon/include -I../../External/servus/include -I../../External/dnssd/include -I../../External/ois/include -I../../External/sdl/include -I../../External/hidapi/include -I../../External/abletonlink/include -I../../External/libusb/include/libusb-1.0 -I../../External/mosquitto/include -I../../External/posistagenet/include -I../../External/simpleble/include"
+
+        # Create compile_commands.json
+        cat > "$OUTPUT_FILE" << 'EOF'
+        [
+        EOF
+
+        FIRST=true
+        for SOURCE_FILE in $(find Source Modules JuceLibraryCode -name "*.cpp" -o -name "*.cc" | sort); do
+          if [ "$FIRST" = false ]; then
+            echo "," >> "$OUTPUT_FILE"
+          fi
+          FIRST=false
+          
+          COMPILER="clang++"
+          COMMAND="$COMPILER -DLINUX=1 -DNDEBUG=1 -DVST_LOGGING=0 -DUSE_ABLETONLINK=1 -DLINK_PLATFORM_LINUX=1 -DGDK_BACKEND=x11 $INCLUDE_FLAGS -std=c++17 -fPIC -O3 -c $SOURCE_FILE -o /tmp/dummy.o"
+          
+          cat >> "$OUTPUT_FILE" << EOF
+          {
+            \"directory\": \"$(pwd)\",
+            \"command\": \"$COMMAND\",
+            \"file\": \"$(pwd)/$SOURCE_FILE\"
+          }
+        EOF
+        done
+
+        cat >> "$OUTPUT_FILE" << 'EOF'
+        ]
+        EOF
+
+        echo "✓ Manual compile_commands.json generated"
+
+  clang:format-check:
+    desc: Check if code matches clang-format style (dry run)
+    cmds:
+      - |
+        echo "Checking code formatting with clang-format..."
+        {{if eq .OS "windows"}}
+        powershell -Command "Get-ChildItem -Recurse -Include *.cpp, *.h, *.hpp | ForEach-Object { clang-format --dry-run --Werror $_.FullName }"
+        {{else}}
+        find Source Modules -type f \( -name "*.cpp" -o -name "*.h" -o -name "*.hpp" \) -exec clang-format --dry-run --Werror {} \;
+        {{end}}
+
+  clang:format-fix:
+    desc: Auto-format all source files with clang-format
+    cmds:
+      - |
+        echo "Formatting code with clang-format..."
+        {{if eq .OS "windows"}}
+        powershell -Command "Get-ChildItem -Recurse -Include *.cpp, *.h, *.hpp | ForEach-Object { clang-format -i $_.FullName }"
+        {{else}}
+        find Source Modules -type f \( -name "*.cpp" -o -name "*.h" -o -name "*.hpp" \) -exec clang-format -i {} \;
+        echo "✓ All source files formatted"
+        {{end}}
+
+  clang:tidy:
+    desc: Run clang-tidy static analysis on source code
+    cmds:
+      - |
+        echo "Running clang-tidy analysis..."
+        {{if eq .OS "linux"}}
+        if [ ! -f "compile_commands.json" ]; then
+          echo "compile_commands.json not found. Run 'task clang:generate-compile-commands' first."
+          exit 1
+        fi
+
+        clang-tidy -p . --header-filter="Source/.*" \
+          --checks="-*,readability-*,modernize-*,performance-*" \
+          $(find Source -name "*.cpp" | head -10)
+        {{else}}
+        echo "clang-tidy analysis requires compile_commands.json setup (Linux recommended)"
+        {{end}}
+
+  clang:check:
+    desc: Run clang static analysis (all checks)
+    cmds:
+      - |
+        echo "Running clang static analysis..."
+        {{if eq .OS "linux"}}
+        if [ ! -f "compile_commands.json" ]; then
+          echo "compile_commands.json not found. Run 'task clang:generate-compile-commands' first."
+          exit 1
+        fi
+
+        scan-build --status-bugs \
+          make -C Builds/LinuxMakefile CONFIG=Release
+        {{else if eq .OS "darwin"}}
+        scan-build -enable-checker alpha.core.BoolAssignment,alpha.core.NullDereference \
+          xcodebuild -project "Builds/MacOSX_CI/{{.PROJECT_NAME}}.xcodeproj" \
+          -scheme "{{.PROJECT_NAME}} - App" \
+          -configuration Release
+        {{else}}
+        echo "Static analysis requires bear or scan-build (recommended on Linux/macOS)"
+        {{end}}
+
+  # ============================================================================
+  # ZED EDITOR INTEGRATION
+  # ============================================================================
+
+  zed:setup:
+    desc: Setup Zed editor configuration for optimal C++ navigation and symbols
+    cmds:
+      - |
+        echo "Setting up Zed C++ environment..."
+        {{if eq .OS "linux"}}
+        mkdir -p ~/.config/zed/settings
+
+        # Create zed settings with clang configuration
+        cat > zed_clang_config.txt << 'EOF'
+        Add the following to ~/.config/zed/settings.json:
+
+        {
+          "lsp": {
+            "clangd": {
+              "initialization_options": {
+                "clangdFileStatus": true,
+                "all_scopes_completion": true,
+                "completion_style": "detailed",
+                "header_insertion_location": "iwyu"
+              },
+              "settings": {
+                "clangd.arguments": [
+                  "-query-driver={{.PROJECT_NAME}}",
+                  "--compile-commands-dir=.",
+                  "--header-insertion=iwyu",
+                  "--clang-tidy",
+                  "--all-scopes-completion",
+                  "--completion-style=detailed",
+                  "--enable-config"
+                ]
+              }
+            }
+          },
+          "languages": {
+            "C++": {
+              "language_servers": ["clangd"],
+              "formatter": {
+                "external": {
+                  "command": "clang-format",
+                  "arguments": ["-style=file"]
+                }
+              }
+            }
+          }
+        }
+
+        EOF
+        cat zed_clang_config.txt
+        {{else if eq .OS "darwin"}}
+        echo "Zed setup for macOS..."
+        mkdir -p ~/Library/Application\ Support/Zed/settings
+        echo "See generated zed_clang_config.txt for configuration"
+        {{else if eq .OS "windows"}}
+        echo "Zed setup for Windows..."
+        mkdir -p "$APPDATA\\Zed\\settings"
+        echo "See generated zed_clang_config.txt for configuration"
+        {{end}}
+
+  zed:open:
+    desc: Open current directory in Zed editor
+    cmds:
+      - |
+        {{if eq .OS "linux"}}
+        zed .
+        {{else if eq .OS "darwin"}}
+        open -a Zed .
+        {{else if eq .OS "windows"}}
+        zed .
+        {{end}}
+
+  zed:compile-db:
+    desc: Generate compile_commands.json and setup Zed for symbol navigation
+    cmds:
+      - task: clang:generate-compile-commands
+      - task: zed:setup
+      - echo "✓ Zed C++ environment configured. Open the project in Zed for full symbol navigation."
+
+  # ============================================================================
+  # CLANG LANGUAGE SERVER SETUP
+  # ============================================================================
+
+  lsp:install-clangd:
+    desc: Install or update clangd language server
+    cmds:
+      - |
+        echo "Installing clangd..."
+        {{if eq .OS "windows"}}
+        powershell -Command "scoop install llvm"
+        {{else if eq .OS "darwin"}}
+        brew install llvm
+        {{else if eq .OS "linux"}}
+        sudo apt-get update && sudo apt-get install -y clang-tools bear
+        {{end}}
+
+  lsp:create-project-config:
+    desc: Create .clangd configuration file for project-specific settings
+    cmds:
+      - |
+        cat > .clangd << 'EOF'
+        ---
+        # Clangd Configuration for Chataigne
+        # This file configures clangd for language server protocol integration
+
+        CompileFlags:
+          Add:
+            - "-std=c++17"
+            - "-DLINUX=1"
+            - "-DNDEBUG=1"
+            - "-DVST_LOGGING=0"
+            - "-DUSE_ABLETONLINK=1"
+            - "-DLINK_PLATFORM_LINUX=1"
+            - "-DGDK_BACKEND=x11"
+            - "-fPIC"
+          Remove:
+            - "-m64"
+            - "-Wno-multichar"
+          CompilationDatabase: "compile_commands.json"
+
+        Index:
+          Background: Build
+          StandardLibraryMapping:
+            stdlibc++: "libstdc++"
+
+        InlayHints:
+          Enabled: true
+          ParameterHints: true
+          TypeHints: true
+          DeducedTypes: true
+
+        Hover:
+          ShowAKA: true
+
+        SemanticTokens: true
+        EOF
+        echo "✓ .clangd configuration created"
+
+  clang:install-tools:
+    desc: Install all necessary clang tools (clang-format, clang-tidy, bear, etc.)
+    cmds:
+      - |
+        {{if eq .OS "windows"}}
+        echo "Installing clang tools on Windows..."
+        powershell -Command "scoop install llvm bear"
+        {{else if eq .OS "darwin"}}
+        echo "Installing clang tools on macOS..."
+        brew install llvm bear clang-format
+        brew link --force llvm
+        {{else if eq .OS "linux"}}
+        echo "Installing clang tools on Linux..."
+        sudo apt-get update
+        sudo apt-get install -y \
+          clang clang-format clang-tools \
+          bear clangd \
+          libclang-dev libclang1
+        {{end}}
+
+  clang:full-setup:
+    desc: Complete clang tooling setup (install tools, generate compile DB, setup LSP)
+    cmds:
+      - task: clang:install-tools
+      - task: setup
+      - task: clang:generate-compile-commands
+      - task: lsp:create-project-config
+      - task: zed:setup
+      - echo ""
+      - echo "✓✓✓ CLANG TOOLS SETUP COMPLETE ✓✓✓"
+      - echo ""
+      - echo "Next steps:"
+      # - echo "  1. Open project in Zed: task zed:open"
+      # - echo "  2. Format code: task clang:format-fix"
+      # - echo "  3. Check formatting: task clang:format-check"
+      # - echo "  4. Run analysis: task clang:tidy"
+      - echo ""
+      - echo "Your Zed editor should now have full symbol navigation and code completion!"
+
+  launch:debug:
+    desc: Build and launch Chataigne in debug mode
+    cmds:
+      - task: windows:build
+      - task: windows:download-dependencies
+      - cmd: 'Binaries\CI\App\Chataigne.exe'
+        shell: powershell
+
+  windows:download-dependencies:
+    desc: Download required dependencies for running the application
+    platforms: [windows]
+    cmds:
+      - |
+        powershell -Command "
+          if (-Not (Test-Path 'Binaries\CI\App\*.dll')) {
+            Write-Host 'Downloading dependencies from https://benjamin.kuperberg.fr/chataigne/user/data/{{.PROJECT_NAME}}-win-x64-debug-dependencies.zip'
+            Invoke-WebRequest 'https://benjamin.kuperberg.fr/chataigne/user/data/{{.PROJECT_NAME}}-win-x64-debug-dependencies.zip' -OutFile 'Binaries\CI\App\deps.zip'
+            Write-Host 'Extracting dependencies to Binaries\CI\App'
+            & 7z e 'Binaries\CI\App\deps.zip' -aoa -o'Binaries\CI\App'
+            Remove-Item 'Binaries\CI\App\deps.zip'
+            Write-Host 'Dependencies ready!'
+          } else {
+            Write-Host 'Dependencies already present, skipping download.'
+          }
+        "

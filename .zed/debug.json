@@ -1,0 +1,18 @@
+[
+  {
+    "label": "Debug Chataigne",
+    "adapter": "CodeLLDB",
+    "request": "launch",
+    "name": "Debug Chataigne",
+    "program": "Binaries/CI/App/Chataigne.exe",
+    "args": [],
+    "cwd": "Binaries/CI/App",
+  },
+  {
+    "label": "Attach to Chataigne",
+    "adapter": "CodeLLDB",
+    "request": "attach",
+    "name": "Attach to Chataigne",
+    "program": "Binaries/CI/App/Chataigne.exe",
+  },
+]

@@ -1,0 +1,84 @@
+---
+# Clangd Configuration for Chataigne
+# This file configures clangd for language server protocol integration
+# Used by Zed, VSCode, Vim, and other editors supporting LSP
+
+CompileFlags:
+  # Additional compiler flags
+  Add:
+    - "-std=c++17"
+    - "-DLINUX=1"
+    - "-DNDEBUG=1"
+    - "-DVST_LOGGING=0"
+    - "-DUSE_ABLETONLINK=1"
+    - "-DLINK_PLATFORM_LINUX=1"
+    - "-DGDK_BACKEND=x11"
+    - "-fPIC"
+    - "-Wno-multichar"
+  
+  # Flags to remove from compile_commands.json
+  Remove:
+    - "-m64"
+    - "-MMD"
+    - "-MP"
+  
+  # Use compile_commands.json for project configuration
+  CompilationDatabase: "compile_commands.json"
+
+# Indexing configuration for faster symbol lookups
+Index:
+  # Run background indexing
+  Background: Build
+  
+  # External AST index files for faster symbol navigation
+  External:
+    File: ".clangd-index"
+    MountPoint: "."
+  
+  # Standard library mapping for better include resolution
+  StandardLibraryMapping:
+    stdlibc++: "libstdc++"
+    libc++: "libc++"
+
+# InlayHints for better code understanding
+InlayHints:
+  Enabled: true
+  ParameterHints: true
+  TypeHints: true
+  DeducedTypes: true
+  
+# Hover information settings
+Hover:
+  ShowAKA: true
+
+# Semantic tokens for syntax highlighting
+SemanticTokens: true
+
+# Code completion settings
+Completion:
+  AllScopes: true
+  BundleOverrides:
+    Tooltip: Detailed
+  
+# Header insertion settings
+Style:
+  NamespaceComments: true
+  FullyQualifiedNamespaces: false
+
+# Diagnostics configuration
+Diagnostics:
+  ClangTidy:
+    Add:
+      - "readability-*"
+      - "modernize-*"
+      - "performance-*"
+    Remove:
+      - "readability-magic-numbers"
+      - "modernize-use-auto"
+  
+  UnusedIncludes: Strict
+  MissingIncludes: Strict
+  Includes:
+    IgnoreHeader:
+      - "^<sys/.*"
+      - "^<asm/.*"

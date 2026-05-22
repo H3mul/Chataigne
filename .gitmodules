@@ -16,3 +16,7 @@
 [submodule "Modules/juce_dmx"]
 	path = Modules/juce_dmx
 	url = https://github.com/benkuper/juce_dmx
+[submodule "JUCE"]
+	path = JUCE
+	url = https://github.com/benkuper/JUCE.git
+	branch = develop-local

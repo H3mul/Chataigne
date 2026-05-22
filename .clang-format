@@ -1,0 +1,145 @@
+---
+# Clang Format Configuration for Chataigne
+# Based on JUCE best practices and modern C++17 standards
+# This configuration ensures consistent code formatting across the project
+
+Language: Cpp
+Standard: c++17
+
+# Line length and wrapping
+ColumnLimit: 120
+LineLength: 120
+
+# Indentation
+IndentWidth: 4
+UseTab: Never
+TabWidth: 4
+IndentCaseLabels: true
+IndentGotoLabels: true
+IndentNamespaces: true
+
+# Spacing
+SpaceAfterCStyleCast: true
+SpaceAfterLogicalNot: true
+SpaceAfterTemplateKeyword: true
+SpaceAroundPointerQualifiers: Both
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCpp11BracedList: true
+SpaceBeforeParens: ControlStatements
+SpaceBeforeRangeBasedForLoopColon: true
+SpaceInEmptyBlock: false
+SpaceInEmptyParentheses: false
+
+# Pointer and reference alignment
+PointerAlignment: Left
+ReferenceAlignment: Pointer
+DereferenceBinding: Left
+
+# Breaking before operators and conditions
+BreakBeforeBinaryOperators: All
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterCaseLabel: false
+  AfterClass: true
+  AfterControlStatement: Never
+  AfterEnum: true
+  AfterFunction: true
+  AfterNamespace: false
+  AfterStruct: true
+  AfterUnion: true
+  AfterExternBlock: false
+  BeforeCatch: false
+  BeforeElse: false
+  BeforeLambdaBody: false
+  BeforeWhile: false
+  IndentBraces: false
+  SplitEmptyFunction: true
+  SplitEmptyRecord: true
+
+# Function-like macros
+BreakConstructorInitializers: BeforeColon
+ConstructorInitializerAllOnOneLineOrOnePerLine: false
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
+
+# Alignment
+AlignAfterOpenBracket: Align
+AlignArrayOfStructures: None
+AlignConsecutiveAssignments: false
+AlignConsecutiveBitFields: false
+AlignConsecutiveDeclarations: false
+AlignConsecutiveMacros: false
+AlignEscapedNewlinesLeft: false
+AlignOperands: Align
+AlignTrailingComments: true
+
+# Function and template arguments
+BinPackArguments: false
+BinPackParameters: false
+AllowAllArgumentsOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: true
+
+# Includes and namespaces
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^<juce'
+    Priority: 1
+  - Regex: '^<[a-z_/]+>'
+    Priority: 2
+  - Regex: '^<'
+    Priority: 3
+  - Regex: '^"'
+    Priority: 4
+IncludeIsMainRegex: '(Test)?$'
+SortIncludes: CaseSensitive
+SortUsingDeclarations: true
+
+# Namespace formatting
+CompactNamespaces: false
+FixNamespaceComments: true
+NamespaceIndentation: All
+
+# Lambdas and function declarations
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLambdasOnASingleLine: Inline
+AllowShortLoopsOnASingleLine: false
+
+# Comments
+ReflowComments: true
+CommentPragmas: '^(NOLINT|NOLINTNEXTLINE|LLVM_ASSUME_NONNULL|ATTRIBUTE_UNUSED)'
+
+# Penalties (higher values prevent breaks)
+PenaltyBreakAssignment: 10
+PenaltyBreakBeforeFirstCallParameter: 30
+PenaltyBreakComment: 10
+PenaltyBreakFirstLessLess: 0
+PenaltyBreakString: 10
+PenaltyBreakTemplateDeclaration: 10
+PenaltyExcessCharacter: 10
+PenaltyIndentedWhitespace: 0
+PenaltyReturnTypeOnItsOwnLine: 60
+
+# Other options
+AccessModifierOffset: -4
+BasedOnStyle: LLVM
+Cpp11BracedListStyle: true
+DeriveLineEnding: true
+DerivePointerAlignment: true
+DisableFormat: false
+EmptyLineBeforeAccessModifier: LogicalBlock
+EmptyLineSignatureSourceLocation: false
+ExperimentalAutoDetectBinPacking: false
+ForEachMacros:
+  - foreach
+  - Q_FOREACH
+  - BOOST_FOREACH
+StatementMacros:
+  - Q_UNUSED
+  - QT_REQUIRE_VERSION
+UseCRLF: false
+UseTabWidth: 4
+InsertBraces: true
+InsertTrailingCommas: None
