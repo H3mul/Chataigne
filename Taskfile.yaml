@@ -777,13 +777,13 @@ tasks:
       - cmd: 'Binaries\CI\App\Chataigne.exe'
         shell: powershell
 
-  windows:download-dependencies:
+  windows:download-runtime-dependencies:
     desc: Download required dependencies for running the application
     platforms: [windows]
     cmds:
       - |
         powershell -Command "
-          if (-Not (Test-Path 'Binaries\CI\App\*.dll')) {
+          if (-Not (Test-Path 'Binaries\CI\App\servus.dll')) {
             Write-Host 'Downloading dependencies from https://benjamin.kuperberg.fr/chataigne/user/data/{{.PROJECT_NAME}}-win-x64-debug-dependencies.zip'
             Invoke-WebRequest 'https://benjamin.kuperberg.fr/chataigne/user/data/{{.PROJECT_NAME}}-win-x64-debug-dependencies.zip' -OutFile 'Binaries\CI\App\deps.zip'
             Write-Host 'Extracting dependencies to Binaries\CI\App'
