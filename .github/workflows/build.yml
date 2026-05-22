@@ -74,7 +74,9 @@ jobs:
         id: create_release
         uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          tag_name: rolling
+          name: CI Rolling Release
+          prerelease: true
           files: ./Binaries/CI/App/${{ steps.create_package.outputs.pkg-name }}
 
       # - name: Upload
