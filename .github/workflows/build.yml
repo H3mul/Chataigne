@@ -6,6 +6,7 @@ on:
 env:
   ProjectName: Chataigne
   PackagesVersion: 1.2.11
+  DepDirUrl: https://benjamin.kuperberg.fr/chataigne/user/data/
 
 jobs:
   windows:
@@ -15,15 +16,13 @@ jobs:
     strategy:
       matrix:
         include:
+          - arch: win-x64
+            buildFolder: "VisualStudio2022_CI"
+            installerName: install
 
-        - arch: win-x64
-          buildFolder: "VisualStudio2022_CI"
-          installerName: install
-
-        - arch: win7-x64
-          buildFolder: "VisualStudio2022_Win7CI"
-          installerName: installWin7
-
+          - arch: win7-x64
+            buildFolder: "VisualStudio2022_Win7CI"
+            installerName: installWin7
 
       fail-fast: false
 
@@ -31,7 +30,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v2
         with:
-          submodules: 'recursive'
+          submodules: "recursive"
 
       - name: Checkout JUCE
         uses: actions/checkout@v2
@@ -54,9 +53,9 @@ jobs:
         run: |
           cmd.exe /c "call `"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat`" && set > %temp%\vcvars.txt"
           Get-Content "$env:temp\vcvars.txt" | Foreach-Object { if ($_ -match "^(.*?)=(.*)$") { Set-Content "env:\$($matches[1])" $matches[2] }}
-     
+
       - name: Build
-        run:  msbuild "Builds/${{ matrix.buildFolder }}/${{ env.ProjectName }}.sln" /p:PreferredToolArchitecture=x64 /m /verbosity:normal /p:Configuration=${{ steps.set_variables.outputs.config }}
+        run: msbuild "Builds/${{ matrix.buildFolder }}/${{ env.ProjectName }}.sln" /p:PreferredToolArchitecture=x64 /m /verbosity:normal /p:Configuration=${{ steps.set_variables.outputs.config }}
 
       - name: Create Package
         id: create_package
@@ -99,31 +98,31 @@ jobs:
       #   with:
       #     pkg-name: ./Builds/${{ matrix.buildFolder }}/x64/${{ steps.set_variables.outputs.config }}/App/${{ steps.create_package.outputs.pdb-name }}
       #     url: ${{ secrets.PDBUPLOADURL }}
-          # pass: ${{ secrets.UPLOADPASS }}
+      # pass: ${{ secrets.UPLOADPASS }}
 
   osx:
     if: false # tmp disable
     name: OSX
     runs-on: macos-latest
-    
+
     strategy:
       matrix:
         include:
-        - arch: x86_64
-          suffix: intel
-          config: Release
+          - arch: x86_64
+            suffix: intel
+            config: Release
 
-        - arch: arm64
-          suffix: silicon
-          config: ReleaseSilicon
-        
+          - arch: arm64
+            suffix: silicon
+            config: ReleaseSilicon
+
       fail-fast: false
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v2
         with:
-          submodules: 'recursive'
+          submodules: "recursive"
 
       - name: Checkout JUCE
         uses: actions/checkout@v2
@@ -136,19 +135,19 @@ jobs:
         id: set_variables
         uses: ./.github/actions/set-suffix
         with:
-          os: 'osx-${{ matrix.suffix }}'
+          os: "osx-${{ matrix.suffix }}"
 
-      - name: Download Packages 
+      - name: Download Packages
         run: |
           curl -L -o Packages.dmg 'http://s.sudre.free.fr/Software/files/Packages.dmg'
           hdiutil mount Packages.dmg
           sudo installer -pkg "/Volumes/Packages ${{ env.PackagesVersion }}/Install Packages.pkg" -target /
           hdiutil detach "/Volumes/Packages ${{ env.PackagesVersion }}/"
-          
+
       - name: Setup XCode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '16.4.0'
+          xcode-version: "16.4.0"
 
       - name: Build
         uses: sersoft-gmbh/xcodebuild-action@v2.0.1
@@ -166,7 +165,7 @@ jobs:
         run: |
           # 1. Define Path (Matches .pkgproj expectation)
           APP_PATH="Release/${{ env.ProjectName }}.app"
-          
+
           # 2. Verification
           if [ ! -d "$APP_PATH" ]; then
              echo "::error::App not found at '$APP_PATH'. Please verify your Projucer Post-Build script actually moves the app to this folder."
@@ -174,27 +173,27 @@ jobs:
              ls -F
              exit 1
           fi
-          
+
           echo "Found App at $APP_PATH. Proceeding with bundling."
 
           FRAMEWORKS_DIR="$APP_PATH/Contents/Frameworks"
           EXECUTABLE="$APP_PATH/Contents/MacOS/${{ env.ProjectName }}"
-          
+
           # 3. Create Frameworks directory
           mkdir -p "$FRAMEWORKS_DIR"
-          
+
           # 4. Copy Dylibs
           cp External/mosquitto/lib/osx/libmosquitto.dylib "$FRAMEWORKS_DIR/"
           cp External/mosquitto/lib/osx/libmosquittopp.dylib "$FRAMEWORKS_DIR/"
           cp External/mosquitto/lib/osx/libssl.dylib "$FRAMEWORKS_DIR/"
           cp External/mosquitto/lib/osx/libcrypto.dylib "$FRAMEWORKS_DIR/"
-          
+
           # 5. Fix Library IDs
           install_name_tool -id @rpath/libmosquitto.dylib "$FRAMEWORKS_DIR/libmosquitto.dylib"
           install_name_tool -id @rpath/libmosquittopp.dylib "$FRAMEWORKS_DIR/libmosquittopp.dylib"
           install_name_tool -id @rpath/libssl.dylib "$FRAMEWORKS_DIR/libssl.dylib"
           install_name_tool -id @rpath/libcrypto.dylib "$FRAMEWORKS_DIR/libcrypto.dylib"
-          
+
           # 6. Fix dependency path in libmosquittopp
           install_name_tool -change /usr/local/lib/libmosquitto.dylib @rpath/libmosquitto.dylib "$FRAMEWORKS_DIR/libmosquittopp.dylib" || true
           install_name_tool -change libmosquitto.dylib @rpath/libmosquitto.dylib "$FRAMEWORKS_DIR/libmosquittopp.dylib" || true
@@ -203,13 +202,13 @@ jobs:
 
           # 7. Add RPATH to Executable
           install_name_tool -add_rpath @executable_path/../Frameworks "$EXECUTABLE" || true
-          
+
           # 8. Re-sign (Mandatory after modifying the bundle)
           codesign --force --deep --sign - "$APP_PATH"
 
       - name: Create Package
         id: create_package
-        run:  |
+        run: |
           packagesbuild ${{ env.ProjectName }}.pkgproj
           PKGNAME=${{ env.ProjectName }}-${{ steps.set_variables.outputs.suffix }}.pkg
           mv ${{ env.ProjectName }}.pkg $PKGNAME
@@ -231,7 +230,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          submodules: 'recursive'
+          submodules: "recursive"
 
       - name: Checkout JUCE
         uses: actions/checkout@v4
@@ -534,7 +533,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          submodules: 'recursive'
+          submodules: "recursive"
 
       - name: Checkout JUCE
         uses: actions/checkout@v4
