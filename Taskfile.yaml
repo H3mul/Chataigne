@@ -655,7 +655,7 @@ tasks:
     platforms: [windows]
     cmds:
       - task: windows:build-debug
-      - cmd: 'Binaries\CI\App\Debug\Chataigne.exe'
+      - cmd: "Binaries/CI/App/Debug/Chataigne.exe"
         shell: powershell
 
   launch:release:
@@ -663,7 +663,7 @@ tasks:
     platforms: [windows]
     cmds:
       - task: windows:build-release
-      - cmd: 'Binaries\CI\App\Chataigne.exe'
+      - cmd: "Binaries/CI/App/Release/Chataigne.exe"
         shell: powershell
 
   windows:download-runtime-dependencies:
